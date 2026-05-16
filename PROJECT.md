@@ -10,6 +10,25 @@ Future capabilities under `em-proj` will follow as additional subcommands (`sess
 
 A sub-agent, skill, or session can ask the substrate "is it safe to edit X, or is someone else working there?" and get a structured, parseable answer grounded in current cross-session reality.
 
+## Current Milestone: v1.0 Bootstrap em-proj state primitive
+
+**Goal:** Ship `em-proj` as an installable Python CLI and prove the `state` primitive end-to-end with the active-workstream pointer as the first validating consumer — running on persistent Redis with kv + advisory locks + claim model.
+
+**Target features:**
+- `em-proj` CLI shell (Python 3.12+ via `uv`, `typer` dispatch, `--json` plumbing, semantic exit codes)
+- `em-proj state` subcommand family — `get|set|del|list` + `lock|unlock` + `claim|release|check` + `lock --hold -- <cmd>` wrapper
+- Persistent Redis backend (loopback, AOF on, brew-managed) with healthcheck
+- Lock default = block-with-1s-timeout, `--warn` opt-in
+- Claim model with TTL + refreshable + holder metadata (session_id, project_hash, reason, claimed_at, expires_at)
+- Stale-detection composite — PID + `proc_start_epoch` + boot-id + TTL backstop
+- Session-id resolution via `CLAUDE_CODE_SESSION_ID`; refuse anonymous claims
+- Project-hash scheme matching `~/.claude/projects/<hash>/` convention
+- `/global-state` Claude skill (read + escape-hatch, sub-agent-callable)
+- First validating consumer: `gsd-sdk workstream.set` writes through `em-proj state claim`
+- Multi-process test harness as the first deliverable (fork+exec children racing at the CLI boundary)
+
+See `### Active` requirements below for full detail and `### Out of Scope (M1)` for explicit exclusions.
+
 ## Requirements
 
 ### Validated
