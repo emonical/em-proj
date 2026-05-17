@@ -103,36 +103,50 @@ Which phases cover which requirements. Updated by the roadmapper.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CLI-01 | TBD | Pending |
-| CLI-02 | TBD | Pending |
-| CLI-03 | TBD | Pending |
-| CLI-04 | TBD | Pending |
-| CLI-05 | TBD | Pending |
-| KV-01 | TBD | Pending |
-| KV-02 | TBD | Pending |
-| LOCK-01 | TBD | Pending |
-| LOCK-02 | TBD | Pending |
-| LOCK-03 | TBD | Pending |
-| CLAIM-01 | TBD | Pending |
-| CLAIM-02 | TBD | Pending |
-| CLAIM-03 | TBD | Pending |
-| REDIS-01 | TBD | Pending |
-| REDIS-02 | TBD | Pending |
-| IDENT-01 | TBD | Pending |
-| IDENT-02 | TBD | Pending |
-| SKILL-01 | TBD | Pending |
-| SKILL-02 | TBD | Pending |
-| SKILL-03 | TBD | Pending |
-| CONSUMER-01 | TBD | Pending |
-| CONSUMER-02 | TBD | Pending |
-| TEST-01 | TBD | Pending |
-| TEST-02 | TBD | Pending |
+| CLI-01 | Phase 2 | Pending |
+| CLI-02 | Phase 2 | Pending |
+| CLI-03 | Phase 2 | Pending |
+| CLI-04 | Phase 2 | Pending |
+| CLI-05 | Phase 2 | Pending |
+| KV-01 | Phase 2 | Pending |
+| KV-02 | Phase 2 | Pending |
+| LOCK-01 | Phase 3 | Pending |
+| LOCK-02 | Phase 3 | Pending |
+| LOCK-03 | Phase 3 | Pending |
+| CLAIM-01 | Phase 4 | Pending |
+| CLAIM-02 | Phase 4 | Pending |
+| CLAIM-03 | Phase 4 | Pending |
+| REDIS-01 | Phase 1 | Pending |
+| REDIS-02 | Phase 2 | Pending |
+| IDENT-01 | Phase 3 | Pending |
+| IDENT-02 | Phase 3 | Pending |
+| SKILL-01 | Phase 5 | Pending |
+| SKILL-02 | Phase 5 | Pending |
+| SKILL-03 | Phase 5 | Pending |
+| CONSUMER-01 | Phase 6 | Pending |
+| CONSUMER-02 | Phase 6 | Pending |
+| TEST-01 | Phase 1 | Pending |
+| TEST-02 | Phase 1 | Pending |
 
 **Coverage:**
-- v1 requirements: 20 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 20 ⚠️ (resolved on roadmap creation)
+- v1 requirements: 24 total
+- Mapped to phases: 24 ✓
+- Unmapped: 0
+
+**Per-phase distribution:**
+
+| Phase | REQ-IDs | Count |
+|-------|---------|-------|
+| Phase 1: Test Harness + Redis Foundation | TEST-01, TEST-02, REDIS-01 | 3 |
+| Phase 2: CLI Shell + KV Primitive | CLI-01, CLI-02, CLI-03, CLI-04, CLI-05, KV-01, KV-02, REDIS-02 | 8 |
+| Phase 3: Identity + Advisory Locks | IDENT-01, IDENT-02, LOCK-01, LOCK-02, LOCK-03 | 5 |
+| Phase 4: Long-Lived Claims | CLAIM-01, CLAIM-02, CLAIM-03 | 3 |
+| Phase 5: `/global-state` Skill Surface | SKILL-01, SKILL-02, SKILL-03 | 3 |
+| Phase 6: gsd-sdk Workstream Consumer | CONSUMER-01, CONSUMER-02 | 2 |
+| **Total** | | **24** |
+
+> Note: previous frontmatter cited "20 total" v1 requirements; the actual count enumerated above and in the table is 24. The 20-figure was a stale draft count from before LOCK and SKILL were expanded into multiple REQ-IDs. Coverage is computed against the 24 enumerated requirements.
 
 ---
 *Requirements defined: 2026-05-17*
-*Last updated: 2026-05-17 after initial definition for milestone v1.0*
+*Last updated: 2026-05-17 — Traceability populated with v1.0 phase mappings*
