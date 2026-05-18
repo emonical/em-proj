@@ -1,2 +1,8 @@
 .planning/
 .DS_Store
+.venv/
+__pycache__/
+*.egg-info/
+dist/
+.pytest_cache/
+*.pyc

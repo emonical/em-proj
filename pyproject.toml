@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "em-proj"
+version = "0.1.0"
+description = "Personal tooling CLI: state primitive for multi-session coordination."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Edward Monical-Vuylsteke" }]
+dependencies = [
+    "typer>=0.16,<1.0",
+    "redis>=6.0,<8.0",
+]
+
+[project.scripts]
+em-proj = "em_proj.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/em_proj"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0,<10.0",
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
