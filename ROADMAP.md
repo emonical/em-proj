@@ -24,12 +24,17 @@ Decimal phases appear between their surrounding integers in numeric order.
 ### Phase 1: Test Harness + Redis Foundation
 **Goal**: A multi-process test harness exists that races fork+exec'd child processes against a real, persistent Redis instance — the substrate every subsequent phase will build on and be validated against.
 **Depends on**: Nothing (first phase)
-**Requirements**: TEST-01, TEST-02, REDIS-01
+**Requirements**: TEST-01, TEST-02, REDIS-01, CLI-01, CLI-02 _(CLI-01/02 remapped from Phase 2 per Phase 1 CONTEXT.md D-04..D-06 — traceability table update pending)_
 **Success Criteria** (what must be TRUE):
   1. `brew services start redis` brings up a loopback Redis configured with `appendonly yes`, `appendfsync everysec`, `save 900 1`, and the AOF is visible at `/opt/homebrew/var/db/redis/appendonly.aof`
   2. A `pytest`-driven harness can spawn N `fork+exec`'d child processes that invoke a CLI binary (stub acceptable at this point) and assert on their combined exit codes, stdout, and effect on the shared Redis state
   3. The harness lands and passes its self-tests *before* any locking, claim, or consumer code is written (TDD-first ordering enforced)
-**Plans**: TBD
+**Plans:** 4 plans
+Plans:
+- [ ] 01-01-PLAN.md — Project skeleton: pyproject.toml + src/em_proj/ package + uv sync (CLI-01 partial)
+- [ ] 01-02-PLAN.md — typer CLI scaffold (--version + --help) + uv tool install --editable . (CLI-01, CLI-02)
+- [ ] 01-03-PLAN.md — Redis client wrapper + brew redis.conf REDIS-01 edits + verify-redis-config.sh (REDIS-01)
+- [ ] 01-04-PLAN.md — Multi-process pytest harness fixtures + TEST-01/TEST-02 self-tests (TEST-01, TEST-02)
 **UI hint**: no
 
 ### Phase 2: CLI Shell + KV Primitive
