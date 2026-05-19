@@ -48,6 +48,44 @@ bash scripts/test.sh multiprocess --tail 40 -k isolation
 | Script                              | Purpose                                            |
 |-------------------------------------|----------------------------------------------------|
 | `scripts/verify-redis-config.sh`    | Verify REDIS-01 brew settings + AOF presence       |
+| `scripts/git-ro.sh`                 | Read-only git wrapper routed through `rtk git -C <path>` |
+
+### `scripts/git-ro.sh` — read-only git inspection
+
+Wraps `rtk git -C <path> <subcommand> [args...]` with a non-destructive
+subcommand whitelist + per-subcommand destructive-flag guards (e.g. `branch
+-d`, `worktree add`, `config <k> <v>`, `tag <name>` are all rejected). Run
+`bash scripts/git-ro.sh help` for the full surface.
+
+Use this for any git inspection of attached worktrees or the main repo — one
+allowlist entry (`Bash(bash scripts/git-ro.sh *)`) covers all of them. Do NOT
+fall back to raw `git -C <path>` for read operations; that requires a separate
+allowlist entry per path.
+
+For destructive ops (commit, push, rebase, reset, etc.), use raw git with
+exact-match allowlist entries — never via this wrapper.
+
+**TODO (future): globalize this script.** The wrapper is project-agnostic.
+When a second project would benefit from it, lift to `~/.claude/scripts/git-ro.sh`
+and allowlist globally via `Bash(bash ~/.claude/scripts/git-ro.sh *)`. The em-proj
+copy can then become a thin pointer or be removed entirely. Memory:
+`feedback-git-ro-global`.
+
+## Structural tests (`tests/structural/`)
+
+Pytest tests that use `ast` + source inspection to encode plan acceptance
+criteria as runtime assertions. Replaces the dozens of per-criterion `grep`
+/ `wc -l` / `test -s` invocations a plan's `<acceptance_criteria>` block
+would otherwise require — one allowlisted dispatcher call (`bash scripts/
+test.sh all` or `bash scripts/test.sh structural`) covers every structural
+check.
+
+New phases that produce significant code should add a
+`tests/structural/test_<phase>_shape.py` file capturing the plan's named
+structural criteria (file presence, symbol existence, fixture scopes, locked
+design choices like "no `multiprocessing` import"). Use AST checks for code
+properties; reserve source-text grep only for things outside Python (shell
+scripts, markdown).
 
 ## Planning artifacts
 

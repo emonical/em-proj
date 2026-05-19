@@ -8,8 +8,11 @@
 #   unit            Run unit tests only (tests/unit, -x stop-on-first-fail).
 #   multiprocess    Run multiprocess tests (tests/multiprocess, -v).
 #   harness         Run harness self-tests only (tests/multiprocess/test_harness_self.py -v).
+#   structural      Run AST/source-shape tests (tests/structural, -v). Encodes plan
+#                   acceptance criteria as pytest checks so one allowlisted call
+#                   covers what would otherwise be many grep/wc invocations.
 #   all             Run full suite (pytest -ra).
-#   conftest-check  Structural sanity: import conftest, assert constants + fixtures + dataclass.
+#   conftest-check  Quick conftest import probe (constants + fixtures + dataclass).
 #   collect         pytest --collect-only (lists tests; runs nothing).
 #   help            This message.
 #
@@ -75,6 +78,9 @@ case "$cmd" in
         ;;
     harness)
         run_or_tail uv run pytest tests/multiprocess/test_harness_self.py -v "$@"
+        ;;
+    structural)
+        run_or_tail uv run pytest tests/structural -v "$@"
         ;;
     all)
         run_or_tail uv run pytest -ra "$@"
