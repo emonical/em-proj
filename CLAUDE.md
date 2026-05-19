@@ -49,6 +49,7 @@ bash scripts/test.sh multiprocess --tail 40 -k isolation
 |-------------------------------------|----------------------------------------------------|
 | `scripts/verify-redis-config.sh`    | Verify REDIS-01 brew settings + AOF presence       |
 | `scripts/git-ro.sh`                 | Read-only git wrapper routed through `rtk git -C <path>` |
+| `scripts/verify-phase.sh`           | Deterministic phase-verification dispatcher (test suite + anti-pattern grep + SUMMARY inventory + commit traceability) |
 
 ### `scripts/git-ro.sh` — read-only git inspection
 
@@ -70,6 +71,30 @@ When a second project would benefit from it, lift to `~/.claude/scripts/git-ro.s
 and allowlist globally via `Bash(bash ~/.claude/scripts/git-ro.sh *)`. The em-proj
 copy can then become a thin pointer or be removed entirely. Memory:
 `feedback-git-ro-global`.
+
+### `scripts/verify-phase.sh` — phase verification dispatcher
+
+`scripts/verify-phase.sh <phase-id>` runs the deterministic checks a GSD
+phase verifier would otherwise have to run as separate Bash invocations:
+test suite (`test.sh all` + `test.sh structural`), Redis backend check,
+`em-proj` on PATH + `--version`, anti-pattern grep (TBD/FIXME/XXX/HACK/TODO/
+PLACEHOLDER) on `src/ tests/ scripts/`, SUMMARY.md presence for every
+PLAN.md in the phase directory, recent commit traceability. Emits a
+structured markdown report to stdout.
+
+A `gsd-verifier` subagent spawn should now reduce to: "run
+`bash scripts/verify-phase.sh <id>`, read the output, apply judgment about
+whether the phase goal is *delivered* (not just that checks pass), write
+VERIFICATION.md with next-phase recommendations." One allowlisted call
+replaces ~10–15 individual prompts for tests + greps + git inspections.
+
+Exit codes: 0 = all pass, 1 = one or more checks fail (report shows which),
+2 = bad input. Run `bash scripts/verify-phase.sh help` for the full surface.
+
+**TODO (future): globalize alongside git-ro.sh.** Phase-verification is a
+project-agnostic concept for GSD. After validating the pattern reduces
+friction in Phase 2's verifier spawn, lift to `~/.claude/scripts/verify-phase.sh`.
+Memory: `feedback-verify-phase-validate`.
 
 ## Structural tests (`tests/structural/`)
 
