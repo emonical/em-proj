@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import time
 
-from conftest import EM_PROJ_BIN, RaceResult, TEST_DB
+from tests.conftest import EM_PROJ_BIN, RaceResult, TEST_DB
 
 
 def test_harness_runs_em_proj_at_cli_boundary(multiproc_race) -> None:
