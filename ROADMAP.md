@@ -47,7 +47,13 @@ Plans:
   3. `em-proj state set foo bar --ttl 60` writes a value that Redis evicts after 60s (first-class TTL on writes, not just locks)
   4. When stdout is not a TTY or `--json` is passed, every command emits JSON with a `schema_version` field; errors go to stderr
   5. Stopping Redis and re-running any `em-proj state` command produces a one-line actionable error (e.g. "Redis unreachable at 127.0.0.1:6379 — run `brew services start redis`") with exit code 1, not a Python traceback
-**Plans**: TBD
+**Plans:** 5 plans
+Plans:
+- [ ] 02-01-PLAN.md — Phase 1 carry-forward verification + empty state_app mount (CLI-01, CLI-02, CLI-03 partial)
+- [ ] 02-02-PLAN.md — em_proj/output.py envelope helpers + unit tests (CLI-05 contract)
+- [ ] 02-03-PLAN.md — em_proj/state/kv.py pure KV ops + validation + KEEPTTL semantics (KV-01, KV-02)
+- [ ] 02-04-PLAN.md — Verb wiring (get/set/del/list) with --json + --ttl + multiproc atomicity tests (KV-01, KV-02, CLI-03..05)
+- [ ] 02-05-PLAN.md — REDIS-02 verb-level test + structural shape test (D-14..D-19) + end-to-end phase verification
 **UI hint**: no
 
 ### Phase 3: Identity + Advisory Locks
