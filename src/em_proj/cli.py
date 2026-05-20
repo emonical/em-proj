@@ -5,6 +5,7 @@ from typing import Annotated
 import typer
 
 from em_proj import __version__
+from em_proj.state import state_app
 
 app = typer.Typer(
     name="em-proj",
@@ -35,10 +36,8 @@ def main(
     """em-proj entrypoint. Subcommands live as sub-apps mounted below."""
 
 
-# Phase 2 mount point — append below when state_app lands:
-#
-#   from em_proj.commands.state import state_app
-#   app.add_typer(state_app, name="state")
+# Phase 2 subcommand mount (D-14) — nested typer app for KV / lock / claim verbs.
+app.add_typer(state_app, name="state", help="KV / lock / claim primitives")
 
 
 if __name__ == "__main__":
