@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Bootstrap em-proj state primitive
 status: executing
-stopped_at: Phase 2 planned (5 plans, ready to execute)
-last_updated: "2026-05-20T15:49:30.015Z"
-last_activity: 2026-05-20 -- Phase 02 planning complete
+stopped_at: Phase 2 context gathered
+last_updated: "2026-05-20T15:52:18.299Z"
+last_activity: 2026-05-20 -- Phase 02 execution started
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 9
   completed_plans: 4
-  percent: 17
+  percent: 44
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-16)
 
 **Core value:** A sub-agent, skill, or session can ask the substrate "is it safe to edit X, or is someone else working there?" and get a structured, parseable answer grounded in current cross-session reality.
-**Current focus:** Phase 02 — CLI Shell + KV Primitive (planned, ready to execute)
+**Current focus:** Phase 02 — CLI Shell + KV Primitive
 
 ## Current Position
 
-Phase: 02 — PLANNED (next: execute 5 plans)
-Plan: 0 of 5
-Status: Ready to execute
-Last activity: 2026-05-20 -- Phase 02 planning complete (5 plans, plan-checker PASSED, decision coverage 19/19)
+Phase: 02 (CLI Shell + KV Primitive) — EXECUTING
+Plan: 1 of 5
+Status: Executing Phase 02
+Last activity: 2026-05-20 -- Phase 02 execution started
 
 Progress: [█░░░░░] 17%
 
