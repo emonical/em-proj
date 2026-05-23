@@ -66,7 +66,14 @@ Plans:
   3. `em-proj state lock <name>` blocks for up to 1 second by default and then errors with exit code 3 (held-by-another); `--warn` opts into the warn-mode human-override path
   4. `em-proj state lock --hold <name> -- <cmd...>` auto-acquires the lock, runs `<cmd>`, and releases on exit (including on signal or crash), verified by the multi-process harness
   5. Two harness children racing `lock --hold` against the same name serialize correctly (one runs the wrapped command, the other waits then errors with exit 3)
-**Plans**: TBD
+**Plans:** 6 plans
+Plans:
+- [ ] 03-01-PLAN.md — em_proj/identity.py session/project resolution + composite + psutil dep (IDENT-01)
+- [ ] 03-02-PLAN.md — Stale-detection composite probe (current_boot_id, probe_pid_alive, probe_proc_start_matches, is_holder_stale) (IDENT-02)
+- [ ] 03-03-PLAN.md — em_proj/state/lock.py pure ops + Lua compare-and-delete/swap scripts + emit_held_by_another (LOCK-01, LOCK-02 1s-block half)
+- [ ] 03-04-PLAN.md — lock/unlock verb wiring + --warn TTY-gated flow + --warn/--hold mutex (LOCK-01, LOCK-02 full)
+- [ ] 03-05-PLAN.md — lock --hold wrapper + refresher thread + signal/atexit cleanup + multi-process race tests (LOCK-03)
+- [ ] 03-06-PLAN.md — Structural shape test + stale-takeover multi-process test + bash scripts/verify-phase.sh 03 verification
 **UI hint**: no
 
 ### Phase 4: Long-Lived Claims
