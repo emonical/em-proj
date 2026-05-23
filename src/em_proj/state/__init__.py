@@ -216,10 +216,7 @@ def lock(
     name: Annotated[str, typer.Argument(help="The lock name.")],
     cmd: Annotated[
         list[str] | None,
-        typer.Argument(
-            default=None,
-            help="Command to wrap (preceded by '--'). Required when --hold is set.",
-        ),
+        typer.Argument(help="Command to wrap (preceded by '--'). Required when --hold is set."),
     ] = None,
     ttl: Annotated[
         int | None,
