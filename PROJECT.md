@@ -104,7 +104,7 @@ M1's state primitive is the foundation all three of these are built on. Backend 
 - **Environment:** macOS Darwin 24.x, zsh, single-user, single-machine
 - **Backend:** Persistent Redis on loopback. Config: `appendonly yes`, `appendfsync everysec`, `save 900 1`. Managed via `brew services start redis`. AOF lives at `/opt/homebrew/var/db/redis/appendonly.aof` and is plaintext-inspectable.
 - **Stack:** Python 3.12+. Distributed and installed via `uv tool install em-proj` from local source. Runtime deps: `typer` (CLI), `redis-py` (client), `pytest` (test only). No Node, no Go, no Rust.
-- **Dependencies allowed:** `redis-py`, `typer`, `pytest`. The zero-deps stance from gsd-sdk's culture does not apply — `em-proj` is its own project and picks the right tools for the job.
+- **Dependencies allowed:** `redis-py`, `typer`, `psutil`, `pytest`. The zero-deps stance from gsd-sdk's culture does not apply — `em-proj` is its own project and picks the right tools for the job. `psutil` added in Phase 3 (D-11) for cross-platform `proc_start_epoch` + `boot_id` probing in the stale-detection composite.
 - **CLI shape:** `em-proj <subcommand> <verb> [args...]`. Subcommands are top-level capabilities (`state`, future: `session`, `message`, etc.). Verbs are operations within a subcommand.
 - **Output convention:** Plain text on TTY by default; machine-readable JSON when stdout is not a TTY OR when `--json` is passed. Stable schema with `"schema_version"` field. Errors go to stderr. Semantic exit codes documented in `--help`.
 - **Shell idioms:** Avoid `ls | while read` patterns — the user's environment wraps `ls` with token-saving output that mangles downstream parsing. Use glob loops (`for f in dir/*`) only.
