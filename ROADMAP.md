@@ -53,7 +53,7 @@ Plans:
 - [x] 02-02-PLAN.md — em_proj/output.py envelope helpers + unit tests (CLI-05 contract)
 - [x] 02-03-PLAN.md — em_proj/state/kv.py pure KV ops + validation + KEEPTTL semantics (KV-01, KV-02)
 - [x] 02-04-PLAN.md — Verb wiring (get/set/del/list) with --json + --ttl + multiproc atomicity tests (KV-01, KV-02, CLI-03..05)
-- [ ] 02-05-PLAN.md — REDIS-02 verb-level test + structural shape test (D-14..D-19) + end-to-end phase verification
+- [x] 02-05-PLAN.md — REDIS-02 verb-level test + structural shape test (D-14..D-19) + end-to-end phase verification
 **UI hint**: no
 
 ### Phase 3: Identity + Advisory Locks
