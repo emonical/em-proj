@@ -52,8 +52,15 @@ D-14/D-17 thin-verb-shell discipline:
 """
 from __future__ import annotations
 
+import atexit
 import json
+import signal
+import subprocess
+import sys
+import threading
 import time
+
+import redis
 
 from em_proj.identity import current_process_composite, is_holder_stale
 from em_proj.redis_client import get_client
@@ -417,6 +424,125 @@ def lock_release(name: str) -> None:
     raise HeldByAnother(holder=current_holder)
 
 
+# ---------------------------------------------------------------------------
+# --hold runner: RefresherThread + lock_hold_run (Plan 03-05 / LOCK-03)
+# ---------------------------------------------------------------------------
+
+#: D-05 / Plan 03-05 — max seconds between EXPIRE refreshes.
+#: Relevant for long TTLs: ttl/3 is used but capped at this value
+#: so a 1-hour lock doesn't wait 20 minutes between refreshes.
+REFRESH_INTERVAL_CAP: float = 20.0  # seconds
+
+
+class RefresherThread(threading.Thread):
+    """Daemon thread that re-EXPIREs state:lock:<name> every ttl/3 seconds while
+    the wrapped subprocess is alive. Stops on `.stop_event.set()`. Caps the
+    refresh interval at min(REFRESH_INTERVAL_CAP, ttl/3) to avoid noisy refreshes
+    on long TTLs.
+
+    Reuses the get_client() singleton. redis.Redis is thread-safe at the client
+    level — the underlying connection pool serializes per-command transport,
+    which is sufficient for serial EXPIRE calls from a single refresher thread
+    sharing the pool with the parent verb thread.
+
+    NOTE: `import redis` at module level is for EXCEPTION TYPE reference only.
+    This thread NEVER constructs a redis.Redis() client directly (D-18 chokepoint).
+    """
+
+    def __init__(self, name: str, ttl: int, stop_event: threading.Event) -> None:
+        super().__init__(daemon=True)
+        self.lock_name = name
+        self.ttl = ttl
+        self.stop_event = stop_event
+        self.interval: float = min(REFRESH_INTERVAL_CAP, ttl / 3.0)
+
+    def run(self) -> None:
+        """Refresh loop — runs EXPIRE every `self.interval` seconds.
+
+        Uses stop_event.wait(interval) instead of time.sleep so that a
+        SIGINT-triggered stop_event.set() wakes the thread immediately.
+
+        Exception handling (Blocker #3 / T-3-05-04):
+          - redis.ConnectionError / redis.TimeoutError: log one-line warning to
+            stderr per failed EXPIRE, keep looping — Redis may recover before TTL.
+          - Unexpected exceptions: log to stderr, re-raise so the daemon thread
+            exits with a visible signal rather than swallowing bugs silently.
+        """
+        client = get_client()  # singleton — thread-safe per redis-py
+        while not self.stop_event.is_set():
+            if self.stop_event.wait(self.interval):
+                return  # stop_event set during wait — exit cleanly
+            try:
+                client.expire(KEY_PREFIX + self.lock_name, self.ttl)
+            except (redis.ConnectionError, redis.TimeoutError) as e:
+                print(
+                    f"em-proj: warning: refresher lost Redis ({e}); "
+                    f"lock {self.lock_name!r} may expire at TTL backstop",
+                    file=sys.stderr,
+                )
+                # log once per loss; keep looping — Redis may recover before TTL
+            except Exception as e:
+                print(
+                    f"em-proj: error: refresher unexpected error ({type(e).__name__}); "
+                    f"thread exiting",
+                    file=sys.stderr,
+                )
+                raise
+
+
+# ---------------------------------------------------------------------------
+# Cleanup helpers (idempotency guard for signal + atexit races)
+# ---------------------------------------------------------------------------
+
+#: Guard so that double-cleanup (e.g., SIGINT arrives during atexit) is a no-op.
+_cleanup_done: threading.Event = threading.Event()
+
+
+def _cleanup(
+    name: str,
+    stop_event: threading.Event,
+    popen: "subprocess.Popen[str] | None",
+) -> None:
+    """Terminate the wrapped subprocess, stop the refresher, and release the lock.
+
+    Idempotent: guarded by _cleanup_done so a second invocation (e.g., SIGINT
+    during atexit) is a no-op.
+
+    Cleanup ordering (documented explicitly per T-3-05-07):
+      subprocess terminated → stop_event set → lock_release
+
+    Stopping the refresher BEFORE calling lock_release avoids a race where a
+    final EXPIRE arrives after the compare-and-delete DEL. Even if it did, EXPIRE
+    on a non-existent key is a no-op (returns 0) so the ordering is defensive,
+    not strictly required.
+
+    HeldByAnother during lock_release is silently swallowed: it means our lock
+    was displaced by a --warn override mid-hold. The compare-and-delete Lua script
+    correctly no-ops, and we do not need to alert here (the displacer already
+    printed a warning).
+    """
+    if _cleanup_done.is_set():
+        return
+    _cleanup_done.set()
+
+    # 1. Terminate the wrapped subprocess if still running.
+    if popen is not None:
+        try:
+            popen.terminate()
+        except OSError:
+            pass  # already exited — that's fine
+
+    # 2. Stop the refresher thread.
+    stop_event.set()
+
+    # 3. Release the lock via Lua compare-and-delete (D-06).
+    #    Silently no-op if we were displaced (T-3-05-05 / T-3-05-07).
+    try:
+        lock_release(name)
+    except HeldByAnother:
+        pass  # displaced mid-hold — correct behavior per D-06
+
+
 def lock_force_displace(name: str, ttl: int = DEFAULT_TTL, reason: str | None = None) -> dict:  # type: ignore[type-arg]
     """Atomically replace any current holder of state:lock:<name> with a fresh holder
     JSON for the calling process.
@@ -467,3 +593,146 @@ def lock_force_displace(name: str, ttl: int = DEFAULT_TTL, reason: str | None = 
         holder=None,
         message="force-displace failed due to race (another holder acquired immediately after DEL)",
     )
+
+
+def lock_hold_run(
+    name: str,
+    ttl: int = DEFAULT_TTL,
+    reason: str | None = None,
+    cmd: list[str] | None = None,
+    *,
+    json_mode: bool = False,
+) -> int:
+    """Acquire state:lock:<name>, spawn <cmd> as a subprocess, refresh the lock
+    every ttl/3 seconds via a daemon RefresherThread, and release the lock when
+    the subprocess exits (normal exit, signal received by the python parent, or atexit).
+
+    This is the LOCK-03 implementation: the high-level ergonomic surface for
+    "acquire + run + release" that prevents callers from getting any of the three
+    steps wrong.
+
+    Flow:
+      1. lock_acquire(name, ttl, reason) — bubbles HeldByAnother to caller.
+         The verb layer (state/__init__.py) catches it and calls emit_held_by_another.
+      2. Start RefresherThread (daemon=True, stop_event=threading.Event).
+      3. Spawn subprocess.Popen(cmd, stdout=None, stderr=None, stdin=None).
+         stdout=None means the child inherits the parent's stdout (passes through).
+         Per D-CONTEXT: "wrapped command's stdout passes through; only the wrapper's
+         own emit honors the json mode."
+         If cmd is missing (FileNotFoundError): cleanup + re-raise.
+      4. Install SIGINT / SIGTERM handlers that run _cleanup + sys.exit(130/143).
+      5. Install atexit handler for normal-exit cleanup.
+      6. popen.communicate(timeout=None) — waits for child.
+         NOT popen.wait() — Phase 1 pitfall #2 (pipe-buffer deadlock).
+         With stdout=None (inherited), communicate() returns (None, None) for the
+         streams; we only care about the return code.
+      7. In finally: _cleanup(name, stop_event, popen); restore old signal handlers;
+         refresher.join(timeout=1.0).
+      8. Return popen.returncode.
+
+    Recovery posture (T-3-05-04):
+      If Redis goes down during --hold, the refresher catches redis.ConnectionError
+      / redis.TimeoutError, logs a stderr warning per failed EXPIRE, and keeps
+      trying. The lock expires at its TTL backstop (default 60s) if Redis stays
+      down. The wrapped subprocess is NOT aborted on refresher failure — best-effort
+      survival over noisy abort.
+
+    Exit code mapping:
+      - Subprocess exits N → return N (normal exit; verb raises SystemExit(N))
+      - HeldByAnother → caller gets the exception (verb exits 3)
+      - ValidationError → caller gets the exception (verb exits 1)
+      - FileNotFoundError on Popen → propagated to caller
+      - SIGINT during --hold → cleanup fires, sys.exit(130) (lock released before exit)
+      - SIGTERM during --hold → cleanup fires, sys.exit(143) (lock released before exit)
+
+    Wrapper log lines:
+      In TTY mode (json_mode=False): write acquire + release one-liners to stderr.
+      In JSON mode (json_mode=True): suppress these log lines — the wrapped
+      subprocess's stdout is the only thing on stdout; the wrapper stays silent to
+      avoid corrupting downstream JSON-consuming pipes.
+
+    NOTE: This function does NOT catch redis.ConnectionError for the acquire/release
+    path. The verb layer must call die_if_redis_unreachable(client) before invoking
+    this (D-18/D-19 carry). The refresher's EXPIRE calls DO catch Redis transients
+    (narrowly: ConnectionError + TimeoutError only) per T-3-05-04.
+    """
+    # Validate name first (before the acquire call, to surface ValidationError early)
+    validate_key(name)
+
+    # Reset the cleanup guard for this invocation.
+    # (The module-level _cleanup_done is intentionally reset here so that
+    # repeated calls in the same process — e.g., tests — each get a fresh guard.)
+    _cleanup_done.clear()
+
+    # Step 1: Acquire the lock. Bubbles HeldByAnother / ValidationError to caller.
+    lock_acquire(name, ttl, reason)
+
+    stop_event = threading.Event()
+    refresher = RefresherThread(name, ttl, stop_event)
+    refresher.start()
+
+    popen: "subprocess.Popen[str] | None" = None
+
+    # Save original signal handlers so we restore them in finally (good citizen).
+    old_sigint = signal.getsignal(signal.SIGINT)
+    old_sigterm = signal.getsignal(signal.SIGTERM)
+
+    def _sigint_handler(*_: object) -> None:
+        _cleanup(name, stop_event, popen)
+        sys.exit(130)  # SIGINT standard exit code
+
+    def _sigterm_handler(*_: object) -> None:
+        _cleanup(name, stop_event, popen)
+        sys.exit(143)  # SIGTERM standard exit code
+
+    signal.signal(signal.SIGINT, _sigint_handler)
+    signal.signal(signal.SIGTERM, _sigterm_handler)
+
+    # Register atexit handler for normal process exit.
+    atexit.register(_cleanup, name, stop_event, popen)
+
+    try:
+        # Step 3: Spawn the subprocess.
+        # stdout=None / stderr=None / stdin=None → inherit from parent (pass-through).
+        # This is the correct posture for --hold: the wrapped command's I/O is
+        # the user's primary concern; the wrapper's own log lines go to stderr.
+        try:
+            popen = subprocess.Popen(
+                cmd,
+                stdout=None,
+                stderr=None,
+                stdin=None,
+            )
+        except (FileNotFoundError, OSError):
+            # Cmd binary not found or not executable: release the lock and propagate.
+            # macOS can raise NotADirectoryError (subclass of OSError) for bare
+            # binary names that don't resolve to a file.
+            _cleanup(name, stop_event, popen)
+            raise
+
+        if not json_mode:
+            print(
+                f"em-proj: acquired lock {name!r} (ttl={ttl}s, pid={popen.pid})",
+                file=sys.stderr,
+            )
+
+        # Step 6: Wait for the subprocess.
+        # communicate(timeout=None) drains pipes + waits — safe even with stdout=None.
+        # Returns (None, None) when stdout/stderr are inherited (None), but we only
+        # care about the return code.
+        popen.communicate(timeout=None)
+
+    finally:
+        # Step 7: Cleanup regardless of how we exit (normal, exception, signal).
+        _cleanup(name, stop_event, popen)
+        # Restore the original signal handlers.
+        signal.signal(signal.SIGINT, old_sigint)
+        signal.signal(signal.SIGTERM, old_sigterm)
+        # Join refresher (best effort; 1s timeout to avoid blocking process exit).
+        refresher.join(timeout=1.0)
+
+    if not json_mode:
+        print(f"em-proj: released lock {name!r}", file=sys.stderr)
+
+    # Step 8: Return the subprocess's exit code.
+    return popen.returncode  # type: ignore[union-attr]
