@@ -68,12 +68,12 @@ Plans:
   5. Two harness children racing `lock --hold` against the same name serialize correctly (one runs the wrapped command, the other waits then errors with exit 3)
 **Plans:** 6 plans
 Plans:
-- [ ] 03-01-PLAN.md — em_proj/identity.py session/project resolution + composite + psutil dep (IDENT-01)
-- [ ] 03-02-PLAN.md — Stale-detection composite probe (current_boot_id, probe_pid_alive, probe_proc_start_matches, is_holder_stale) (IDENT-02)
-- [ ] 03-03-PLAN.md — em_proj/state/lock.py pure ops + Lua compare-and-delete/swap scripts + emit_held_by_another (LOCK-01, LOCK-02 1s-block half)
-- [ ] 03-04-PLAN.md — lock/unlock verb wiring + --warn TTY-gated flow + --warn/--hold mutex (LOCK-01, LOCK-02 full)
-- [ ] 03-05-PLAN.md — lock --hold wrapper + refresher thread + signal/atexit cleanup + multi-process race tests (LOCK-03)
-- [ ] 03-06-PLAN.md — Structural shape test + stale-takeover multi-process test + bash scripts/verify-phase.sh 03 verification
+- [x] 03-01-PLAN.md — em_proj/identity.py session/project resolution + composite + psutil dep (IDENT-01)
+- [x] 03-02-PLAN.md — Stale-detection composite probe (current_boot_id, probe_pid_alive, probe_proc_start_matches, is_holder_stale) (IDENT-02)
+- [x] 03-03-PLAN.md — em_proj/state/lock.py pure ops + Lua compare-and-delete/swap scripts + emit_held_by_another (LOCK-01, LOCK-02 1s-block half)
+- [x] 03-04-PLAN.md — lock/unlock verb wiring + --warn TTY-gated flow + --warn/--hold mutex (LOCK-01, LOCK-02 full)
+- [x] 03-05-PLAN.md — lock --hold wrapper + refresher thread + signal/atexit cleanup + multi-process race tests (LOCK-03)
+- [x] 03-06-PLAN.md — Structural shape test + stale-takeover multi-process test + bash scripts/verify-phase.sh 03 verification
 **UI hint**: no
 
 ### Phase 4: Long-Lived Claims
@@ -119,7 +119,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|----------------|--------|-----------|
 | 1. Test Harness + Redis Foundation | 0/TBD | Not started | - |
 | 2. CLI Shell + KV Primitive | 0/TBD | Not started | - |
-| 3. Identity + Advisory Locks | 0/TBD | Not started | - |
+| 3. Identity + Advisory Locks | 6/6 | Complete | 2026-05-23 |
 | 4. Long-Lived Claims | 0/TBD | Not started | - |
 | 5. `/global-state` Skill Surface | 0/TBD | Not started | - |
 | 6. gsd-sdk Workstream Consumer | 0/TBD | Not started | - |
