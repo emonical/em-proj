@@ -349,27 +349,59 @@ def test_lock_warn_tty_no_leaves_original_holder(clean_db, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Test 12 — lock --hold stub exits 1 with structured not_implemented envelope
+# Test 12 — lock --hold with real dispatch exits 0; wrapped exit code propagates
 # ---------------------------------------------------------------------------
 
 
-def test_lock_hold_stub_structured_error(clean_db):
-    """`state lock --hold foo -- echo hi` exits 1 with structured not_implemented envelope.
+def test_lock_hold_real_dispatch_exits_0(clean_db):
+    """`state lock --hold foo -- echo hi` exits 0; lock released; real dispatch (Plan 03-05).
 
-    The stub must emit emit_error('not_implemented', ...) — no Python traceback.
-    Plan 03-05 replaces this test with real --hold behavior.
+    UPDATED from Plan 03-04 stub test: the stub (emit_error not_implemented) has been
+    replaced with lock_hold_run dispatch. The wrapped 'echo hi' exits 0 so the verb
+    exits 0.
+
+    Note: CliRunner captures subprocess stdout through the inherited file descriptor.
+    We verify exit code and that the lock key is absent after execution.
     """
     result = runner.invoke(
         app, ["state", "lock", "--hold", "--json", "foo", "--", "echo", "hi"]
     )
+    assert result.exit_code == 0, (
+        f"Expected exit 0 from --hold echo hi, got {result.exit_code}\n"
+        f"stdout={result.stdout!r}\nstderr={result.stderr!r}"
+    )
+    # Lock must be released after subprocess exits
+    assert clean_db.get("state:lock:foo") is None
+
+
+def test_lock_hold_non_zero_exit_propagates(clean_db):
+    """`state lock --hold foo -- false` exits 1; lock released; exit code propagates.
+
+    Verifies: the wrapped subprocess's non-zero exit code passes through as the
+    verb's exit code.
+    """
+    result = runner.invoke(
+        app, ["state", "lock", "--hold", "--json", "foo", "--", "false"]
+    )
+    assert result.exit_code == 1, (
+        f"Expected exit 1 from --hold false, got {result.exit_code}\n"
+        f"stdout={result.stdout!r}\nstderr={result.stderr!r}"
+    )
+    # Lock still released even on non-zero wrapped exit
+    assert clean_db.get("state:lock:foo") is None
+
+
+def test_lock_hold_empty_cmd_exits_1_validation_error(clean_db):
+    """`state lock --hold foo` (no cmd after --) exits 1 with validation_error.
+
+    Verifies: the empty-cmd check fires before lock acquisition.
+    """
+    result = runner.invoke(app, ["state", "lock", "--hold", "--json", "foo"])
     assert result.exit_code == 1, f"stderr={result.stderr!r}"
     envelope = json.loads(result.stderr)
     assert envelope["status"] == "error"
-    assert envelope["error"]["code"] == "not_implemented"
-    assert "--hold is implemented in Plan 03-05" in envelope["error"]["message"]
-    # D-17 UX invariant: no Python tracebacks for known error states
-    assert "NotImplementedError" not in result.stderr
-    assert "Traceback" not in result.stderr
+    assert envelope["error"]["code"] == "validation_error"
+    assert "not_implemented" not in result.stderr
 
 
 # ---------------------------------------------------------------------------

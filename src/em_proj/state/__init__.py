@@ -95,6 +95,7 @@ from em_proj.state.lock import (
     HeldByAnother,
     lock_acquire,
     lock_force_displace,
+    lock_hold_run,
     lock_release,
 )
 
@@ -243,7 +244,14 @@ def lock(
 
     Without flags: blocks up to 1s, exits 3 if still held.
     --warn (TTY only): prompts for human override on held lock.
-    --hold -- <cmd>: auto-acquire, run <cmd>, auto-release on exit (Plan 03-05).
+    --hold -- <cmd>: auto-acquire, run <cmd>, auto-release on exit (LOCK-03).
+
+    --hold exit code mapping:
+      - acquire failed (HeldByAnother) → exit 3
+      - empty cmd → exit 1 (validation_error)
+      - wrapped cmd exits N → exit N
+      - SIGINT during --hold → exit 130 (cleanup runs first)
+      - SIGTERM during --hold → exit 143 (cleanup runs first)
 
     Order convention: options before positionals before '--':
       em-proj state lock [--ttl N] [--reason "x"] [--warn|--hold] [--json|--no-json] <name> [-- <cmd...>]
@@ -259,16 +267,44 @@ def lock(
             json_mode=json_mode,
         )
 
-    # 3. --hold stub — Plan 03-05 replaces this single emit_error call with
-    #    lock_hold_run dispatch. Placeholder: exits 1 with structured envelope
-    #    (Phase 2 D-17 UX invariant: no Python tracebacks for known error states).
+    # 3. --hold dispatch (Plan 03-05 — replaces the stub from Plan 03-04).
+    #
+    # Exit code mapping for --hold:
+    #   - acquire failed (HeldByAnother) → exit 3 (held_by_another)
+    #   - empty cmd (validation) → exit 1 (validation_error)
+    #   - wrapped cmd spawned, exits N → exit N (propagated via SystemExit)
+    #   - SIGINT during --hold → exit 130 (lock_hold_run's signal handler fires cleanup)
+    #   - SIGTERM during --hold → exit 143 (same shape)
+    #
+    # The success path returns through SystemExit(exit_code) so the wrapped
+    # subprocess's exit code becomes the process exit code. For example:
+    #   em-proj state lock --hold foo -- false  → exits 1 (wrapped command's code)
+    #   em-proj state lock --hold foo -- true   → exits 0
     if hold:
-        # Placeholder — Plan 03-05 replaces with lock_hold_run dispatch
-        emit_error(
-            "not_implemented",
-            "--hold is implemented in Plan 03-05",
-            json_mode=json_mode,
-        )
+        if not cmd:
+            # Empty cmd: validate before any Redis call.
+            emit_error(
+                "validation_error",
+                "--hold requires a command after `--`",
+                json_mode=json_mode,
+            )
+        # Redis pre-check before the hold runner (D-18 chokepoint).
+        client = get_client()
+        die_if_redis_unreachable(client)
+        try:
+            exit_code = lock_hold_run(name, ttl or DEFAULT_TTL, reason, cmd, json_mode=json_mode)
+            raise SystemExit(exit_code)
+        except HeldByAnother as e:
+            # Lock is held by another process — exit 3 with held_by_another envelope.
+            emit_held_by_another(
+                "held_by_another",
+                f"Lock '{name}' held by session "
+                f"{e.holder['session_id'] if e.holder else 'unknown'}",
+                holder=e.holder,
+                json_mode=json_mode,
+            )
+        except ValidationError as e:
+            emit_error(e.code, e.message, json_mode=json_mode)
 
     # 4. Redis pre-check (D-18 chokepoint — must be before any business call).
     client = get_client()
