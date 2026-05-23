@@ -16,6 +16,19 @@ Public API (consumed by Phase 3 lock.py and Phase 4 claim.py):
   - ``resolve_project_hash() -> str`` — tr('/', '-') on absolute cwd path
   - ``current_process_composite() -> dict[str, object]`` — five-key holder record subset
 
+Stale-detection probe API (Plan 03-02 additions — IDENT-02):
+  - ``current_boot_id() -> str``              — current machine boot identifier (for holder comparison)
+  - ``probe_pid_alive(pid) -> bool``           — True if PID is alive or unreadable (conservative)
+  - ``probe_proc_start_matches(pid, expected_start_epoch) -> bool`` — True on match or AccessDenied
+  - ``is_holder_stale(holder: dict) -> bool``  — composite three-probe stale gate (D-10 step 1)
+
+Conservative-probe principle (T-3-02-01 / T-3-XX-06):
+  When a probe cannot determine liveness (``psutil.AccessDenied``), we return the
+  "live" signal rather than the "stale" signal.  False-negatives (missing a stale
+  holder for one acquire cycle) are recoverable — the TTL backstop (D-04: 60s) or
+  Phase 5's ``unlock --force`` handles them.  False-positives (displacing a live
+  holder) are data corruption and are never acceptable.
+
 Fallback chain for ``resolve_session_id`` (D-12):
   1. ``CLAUDE_CODE_SESSION_ID`` env var — set in every Claude Code session; UUID string.
   2. ``pid-<os.getpid()>`` — deterministic within the lifetime of the calling process,
@@ -50,6 +63,23 @@ import psutil
 
 
 # ---------------------------------------------------------------------------
+# Module-level constants (Plan 03-02 — stale-probe tolerance)
+# ---------------------------------------------------------------------------
+
+#: Tolerance (in seconds) for comparing ``psutil.Process(pid).create_time()``
+#: against the holder's ``proc_start_epoch`` field.
+#:
+#: Rationale (T-3-02-06):
+#:   Clock jitter between ``time.time()`` and psutil's ``create_time()`` is on the
+#:   order of nanoseconds to microseconds in practice.  0.5 seconds is well above
+#:   clock-jitter noise and well below the shortest realistic process-start gap
+#:   that could produce a false "same process" match.  Choosing < 1s avoids
+#:   wrapping around high-frequency process recycling; choosing > 0 avoids
+#:   spurious mismatches from floating-point rounding.
+PROC_START_EPSILON: float = 0.5  # seconds; tolerance for psutil create_time() vs holder's proc_start_epoch
+
+
+# ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
@@ -69,7 +99,7 @@ def _boot_id(boot_time: float) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Public API
+# Public API — identity primitives (Plan 03-01)
 # ---------------------------------------------------------------------------
 
 
@@ -136,7 +166,7 @@ def current_process_composite() -> dict[str, object]:
     ``psutil.NoSuchProcess`` is NOT caught here — if it raises, that is a genuine bug
     (the current process cannot probe itself) and should propagate as an unhandled
     exception.  Stale-probe error handling (for querying OTHER processes) lives in
-    Plan 03-02's ``lock.py``.
+    Plan 03-02's probe functions below.
     """
     pid = os.getpid()
     proc = psutil.Process(pid)
@@ -148,3 +178,129 @@ def current_process_composite() -> dict[str, object]:
         "session_id": resolve_session_id(),
         "project_hash": resolve_project_hash(),
     }
+
+
+# ---------------------------------------------------------------------------
+# Public API — stale-detection probes (Plan 03-02 — IDENT-02)
+# ---------------------------------------------------------------------------
+
+
+def current_boot_id() -> str:
+    """Return the boot identifier for the current OS boot (D-10 step 1.3).
+
+    Thin wrapper over ``_boot_id(psutil.boot_time())``.  Stable across all calls
+    within a single OS boot; changes on reboot.
+
+    Lock records store the holder's ``boot_id`` at acquire time.  ``lock.py``
+    calls ``current_boot_id()`` during the stale probe and compares it against
+    ``holder["boot_id"]`` — a mismatch means the machine rebooted since the
+    holder acquired the lock, making the holder unconditionally stale.
+    """
+    return _boot_id(psutil.boot_time())
+
+
+def probe_pid_alive(pid: int) -> bool:
+    """Return True if the given PID appears to be alive, False if it is definitively gone.
+
+    Conservative-probe rule (T-3-XX-06):
+      - ``psutil.NoSuchProcess`` → PID is gone; return ``False`` (stale signal).
+      - ``psutil.AccessDenied``  → PID exists but we cannot read it; return ``True``
+        (live signal — "I cannot tell, default to live").  We must never displace a
+        holder we cannot fully read; the TTL backstop recovers false-negatives.
+      - No exception → PID is alive; return ``True``.
+
+    Note: constructing ``psutil.Process(pid)`` is sufficient to probe existence on
+    most platforms; no further method call is needed.
+    """
+    try:
+        psutil.Process(pid)
+        return True
+    except psutil.NoSuchProcess:
+        return False
+    except psutil.AccessDenied:
+        # Cannot read process metadata — default to "live" (conservative, T-3-XX-06).
+        return True
+
+
+def probe_proc_start_matches(pid: int, expected_start_epoch: float) -> bool:
+    """Return True if the process at ``pid`` appears to be the same process that set ``expected_start_epoch``.
+
+    Compares ``psutil.Process(pid).create_time()`` against ``expected_start_epoch``
+    within ``PROC_START_EPSILON`` seconds.  A match means the PID has not been
+    recycled; a mismatch (or a missing PID) means the original process is gone and
+    a different process is now occupying that PID.
+
+    Return values:
+      - ``True``  — ``abs(actual_create_time - expected_start_epoch) < PROC_START_EPSILON``
+                    OR ``psutil.AccessDenied`` (conservative — cannot determine, assume match).
+      - ``False`` — ``psutil.NoSuchProcess`` (PID gone → stale) OR time mismatch (PID reused).
+
+    Conservative-probe rule (T-3-XX-06) applies here too: ``AccessDenied`` means we
+    cannot read the start time, so we defer to other probes (``probe_pid_alive`` and
+    the ``boot_id`` check in ``is_holder_stale``) rather than declaring stale.
+    """
+    try:
+        actual = psutil.Process(pid).create_time()
+        return abs(actual - expected_start_epoch) < PROC_START_EPSILON
+    except psutil.NoSuchProcess:
+        # PID is gone — original process no longer exists; stale signal.
+        return False
+    except psutil.AccessDenied:
+        # Cannot read create_time — default to "match" (conservative, T-3-XX-06).
+        return True
+
+
+def is_holder_stale(holder: dict) -> bool:  # type: ignore[type-arg]
+    """Return True if the lock holder described by ``holder`` is no longer alive.
+
+    Runs the three-probe sequence from D-10 step 1 in short-circuit order:
+      1. ``probe_pid_alive(holder["pid"])``                                → False → stale
+      2. ``probe_proc_start_matches(holder["pid"], holder["proc_start_epoch"])`` → False → stale
+      3. ``current_boot_id() == holder["boot_id"]``                        → False → stale
+
+    Returns ``False`` (holder is live) ONLY when all three probes pass.
+    Returns ``True`` (holder is stale) on the first failing probe.
+
+    Short-circuit ordering is intentional: probe 1 (pid alive) makes a cheap OS
+    lookup; on a dead PID we skip the ``create_time()`` call (probe 2 would also
+    return False, but we avoid the extra psutil call under contention).
+
+    ``holder`` must be a dict with these keys and types:
+      - ``"pid"``               : int
+      - ``"proc_start_epoch"``  : float (or int — coerced automatically by psutil comparison)
+      - ``"boot_id"``           : str
+
+    Raises ``ValueError`` if any required key is missing or if ``holder["pid"]`` is
+    not an ``int``.  A malformed holder is a caller bug, not a routine flow — lock.py
+    lets this propagate so it surfaces as an assertion failure during development.
+
+    Security note (T-3-02-04): this function returns a ``bool``; no process metadata
+    or pid values appear in the ``ValueError`` message beyond the key name, so error
+    messages do not leak information about the process table.
+    """
+    # --- Input validation ---
+    required_keys = ("pid", "proc_start_epoch", "boot_id")
+    for key in required_keys:
+        if key not in holder:
+            raise ValueError(f"holder dict is missing required key: {key!r}")
+    if not isinstance(holder["pid"], int):
+        raise ValueError("holder['pid'] must be an int")
+
+    pid: int = holder["pid"]
+    expected_start: float = holder["proc_start_epoch"]
+    expected_boot_id: str = holder["boot_id"]
+
+    # Probe 1 — is the PID alive?
+    if not probe_pid_alive(pid):
+        return True  # PID gone → stale
+
+    # Probe 2 — does the PID's create_time match the holder's record?
+    if not probe_proc_start_matches(pid, expected_start):
+        return True  # PID reused → stale
+
+    # Probe 3 — does the current boot_id match the holder's boot_id?
+    if current_boot_id() != expected_boot_id:
+        return True  # Machine rebooted since the holder acquired the lock → stale
+
+    # All three probes say live.
+    return False
