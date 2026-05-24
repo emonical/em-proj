@@ -410,6 +410,73 @@ def claim_release(area: str) -> None:
     raise HeldByAnother(holder=current_holder)
 
 
+def claim_list_by_prefix(
+    mine: bool = False,
+    active: bool = False,
+    stale: bool = False,
+) -> list[dict]:  # type: ignore[type-arg]
+    """Enumerate active claims scoped to the current project_hash.
+
+    MODULE-PUBLIC: wired by Plan 05-03's claim_list verb.
+    Scopes to current project_hash only — cross-project listing is out of scope (M2).
+    Does NOT catch redis.ConnectionError (D-18 carry).
+
+    Filters (AND logic — all specified filters must match):
+      mine   — only claims where holder["session_id"] == resolve_session_id()
+      active — only claims with Redis TTL > 0 (key has an active expiry)
+      stale  — only claims where Redis TTL <= 0 (persistent key: ttl=-1, or already 0)
+
+    Note: active and stale are mutually exclusive at the caller's discretion.
+    If both are set, results will be empty (no key can have TTL both > 0 and <= 0).
+    mine may be combined with active or stale (AND logic).
+
+    Keys that fail HGETALL decode (empty dict or missing required fields) are silently
+    skipped — malformed HASH entries cannot cause data corruption (T-5-02-03 accept).
+
+    Returns empty list when no claims exist under the current project_hash prefix.
+
+    Return type: list[dict] — each dict has the same 5-field shape as claim_take return
+    value: session_id, project_hash, reason, claimed_at, expires_at.
+    """
+    project_hash = resolve_project_hash()
+    scan_prefix = KEY_PREFIX + project_hash + ":"
+    client = get_client()
+
+    results = []
+    for key in client.scan_iter(match=scan_prefix + "*", count=100):
+        # Fetch HASH fields; empty dict means key expired mid-scan — skip
+        raw = client.hgetall(key)
+        if not raw:
+            continue
+
+        # Decode HASH fields to typed holder dict; skip malformed entries
+        try:
+            holder = _hgetall_to_holder(raw)
+        except (KeyError, ValueError):
+            continue
+
+        # Filter: mine — only current session's claims
+        if mine and holder["session_id"] != resolve_session_id():
+            continue
+
+        # Lazy TTL fetch: only call client.ttl() when active or stale filter is set
+        _ttl = None
+        if active or stale:
+            _ttl = client.ttl(key)
+
+        # Filter: active — only keys with TTL > 0 (live expiry set)
+        if active and _ttl <= 0:
+            continue
+
+        # Filter: stale — only keys with TTL <= 0 (persistent key, no active expiry)
+        if stale and _ttl > 0:
+            continue
+
+        results.append(holder)
+
+    return results
+
+
 def claim_check(area: str) -> dict:  # type: ignore[type-arg]
     """Check the current claim on area.
 
