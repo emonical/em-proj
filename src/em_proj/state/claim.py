@@ -320,8 +320,9 @@ def claim_take(area: str, ttl: int = TTL_DEFAULT, reason: str | None = None) -> 
       8. If result == "refreshed": return holder directly (race-free — the
          locally-built holder already has the correct expires_at; claimed_at
          is never mutated on refresh, so a separate HGETALL would be TOCTOU).
-      9. If result == "conflict": HGETALL existing, _hgetall_to_holder, raise
-         HeldByAnother(holder=existing)
+      9. If result == "conflict": HGETALL existing; if raw is empty (holder
+         expired between EVAL and HGETALL), pass holder=None to HeldByAnother
+         rather than crashing with KeyError.
 
     Raises:
       ValidationError — invalid area name, reason too long, or ttl out of range
@@ -361,9 +362,13 @@ def claim_take(area: str, ttl: int = TTL_DEFAULT, reason: str | None = None) -> 
         # by a refresh, so the local holder value is authoritative.
         return holder
 
-    # result == "conflict" — different holder present
+    # result == "conflict" — different holder present.
+    # Guard against an empty dict: if the conflicting holder's key expires
+    # (or is released) between the Lua EVAL and this HGETALL, hgetall()
+    # returns {} — passing that to _hgetall_to_holder raises KeyError.
+    # Treat an empty result as "holder vanished" and pass None.
     raw = client.hgetall(redis_key)
-    existing = _hgetall_to_holder(raw)
+    existing = _hgetall_to_holder(raw) if raw else None
     raise HeldByAnother(holder=existing)
 
 
