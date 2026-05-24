@@ -23,7 +23,7 @@ A sub-agent, skill, or session can ask the substrate "is it safe to edit X, or i
 - Stale-detection composite — PID + `proc_start_epoch` + boot-id + TTL backstop
 - Session-id resolution via `CLAUDE_CODE_SESSION_ID`; refuse anonymous claims
 - Project-hash scheme matching `~/.claude/projects/<hash>/` convention
-- `/global-state` Claude skill (read + escape-hatch, sub-agent-callable)
+- `/em-global-state` Claude skill (read + escape-hatch, sub-agent-callable)
 - First validating consumer: `gsd-sdk workstream.set` writes through `em-proj state claim`
 - Multi-process test harness as the first deliverable (fork+exec children racing at the CLI boundary)
 
@@ -52,7 +52,7 @@ See `### Active` requirements below for full detail and `### Out of Scope (M1)` 
 - [ ] **Session-id resolution** via `CLAUDE_CODE_SESSION_ID` env var (verified live by architecture research); fallback chain documented; refuse anonymous claims by default
 - [ ] **Project-hash scheme** matches `~/.claude/projects/<hash>/` convention (`tr '/' '-'` on absolute path); auto-derived from `$PWD` via git-toplevel or PWD fallback
 - [ ] **Machine-readable output by default** when stdout is not a TTY (`--json` for explicit); stable schema with version field; semantic exit codes (0/1/2/3 = success/error/not-found-or-not-held/held-by-another)
-- [ ] **`/global-state` Claude skill** as the read + escape-hatch surface: `list`, `get`, `locks [--mine|--stale]`, `claims [--mine|--active|--stale]`, `unlock|release [--force]` with confirmation prompts for live holders. Designed to be invoked by sub-agents (parseable output), not just humans.
+- [ ] **`/em-global-state` Claude skill** as the read + escape-hatch surface: `list`, `get`, `locks [--mine|--stale]`, `claims [--mine|--active|--stale]`, `unlock|release [--force]` with confirmation prompts for live holders. Designed to be invoked by sub-agents (parseable output), not just humans.
 - [ ] **First validating consumer — active-workstream pointer:** `gsd-sdk workstream.set` writes through `em-proj state claim` (it's a claim, not a lock — sessions work on a workstream across many commands). Two sessions in the same project no longer silently clobber each other's active pointer.
 - [ ] **Stale-detection composite:** PID + `proc_start_epoch` (defeats PID reuse) + boot-id backstop (defeats reboot-with-leftover-state); TTL is the final backstop
 - [ ] **Multi-process test harness as the first M1 deliverable** — spawn `fork+exec`'d child processes, race them at the CLI boundary; in-process tests are insufficient for advisory locking (per pitfalls research)
@@ -68,7 +68,7 @@ See `### Active` requirements below for full detail and `### Out of Scope (M1)` 
 - **Cross-machine sync** — single-machine, single-user target
 - **Multi-key atomic transactions** — Redis MULTI/EXEC + Lua available as escape hatch, but no SDK verb in M1
 - **Other AI CLIs as first-class consumers** — design must not preclude them; Claude Code is the only initial consumer
-- **Web UI / TUI dashboard** — the `/global-state` skill is the human surface
+- **Web UI / TUI dashboard** — the `/em-global-state` skill is the human surface
 
 ## Context
 
@@ -109,7 +109,7 @@ M1's state primitive is the foundation all three of these are built on. Backend 
 - **Output convention:** Plain text on TTY by default; machine-readable JSON when stdout is not a TTY OR when `--json` is passed. Stable schema with `"schema_version"` field. Errors go to stderr. Semantic exit codes documented in `--help`.
 - **Shell idioms:** Avoid `ls | while read` patterns — the user's environment wraps `ls` with token-saving output that mangles downstream parsing. Use glob loops (`for f in dir/*`) only.
 - **Communication style:** Concise, opinionated recommendations; no vendor-tradeoff matrices unless asked.
-- **Skills are read+escape-hatch only:** The `/global-state` skill never writes through itself except for `unlock`/`release` with explicit `--force` and confirmation. Writes must declare themselves through code (CLI calls or SDK), never through ad-hoc debug surfaces.
+- **Skills are read+escape-hatch only:** The `/em-global-state` skill never writes through itself except for `unlock`/`release` with explicit `--force` and confirmation. Writes must declare themselves through code (CLI calls or SDK), never through ad-hoc debug surfaces.
 
 ## Key Decisions
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Milestone v1.0 ships `em-proj` as an installable Python CLI and proves the `state` primitive end-to-end with the active-workstream pointer as the first validating consumer. The path: land the multi-process test harness and Redis infrastructure first (TDD-first per pitfalls research), then the CLI shell with KV operations as the first exercisable surface, then identity + locks, then claims, then the `/global-state` skill surface, and finally the `gsd-sdk workstream.set` integration that proves two concurrent sessions no longer clobber each other.
+Milestone v1.0 ships `em-proj` as an installable Python CLI and proves the `state` primitive end-to-end with the active-workstream pointer as the first validating consumer. The path: land the multi-process test harness and Redis infrastructure first (TDD-first per pitfalls research), then the CLI shell with KV operations as the first exercisable surface, then identity + locks, then claims, then the `/em-global-state` skill surface, and finally the `gsd-sdk workstream.set` integration that proves two concurrent sessions no longer clobber each other.
 
 ## Phases
 
@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 2: CLI Shell + KV Primitive** - Installable `em-proj` CLI with `state get|set|del|list` (incl. `--ttl`), semantic exit codes, and Redis-error UX
 - [ ] **Phase 3: Identity + Advisory Locks** - Session/project identity resolution, stale-detection composite, and short-lived `lock|unlock|lock --hold` primitives
 - [x] **Phase 4: Long-Lived Claims** - `claim|release|check` with TTL, refreshable holder metadata, and anonymous-claim refusal
-- [ ] **Phase 5: `/global-state` Skill Surface** - Sub-agent-parseable read view and escape-hatch over the complete state primitive
+- [ ] **Phase 5: `/em-global-state` Skill Surface** - Sub-agent-parseable read view and escape-hatch over the complete state primitive
 - [ ] **Phase 6: gsd-sdk Workstream Consumer** - `gsd-sdk workstream.set` shells out through `em-proj state claim`; concurrent-session clobber demonstrated as resolved end-to-end
 
 ## Phase Details
@@ -82,8 +82,8 @@ Plans:
 **Requirements**: CLAIM-01, CLAIM-02, CLAIM-03
 **Success Criteria** (what must be TRUE):
   1. `em-proj state claim <area>` takes a 30-minute claim by default; `--ttl <secs>` overrides; repeating the call by the same holder refreshes the TTL rather than erroring
-  2. `em-proj state check <area>` returns the holder record `{session_id, project_hash, reason, claimed_at, expires_at}` in JSON (or formatted text on TTY), with exit code 0 if held by anyone and 2 if not held. (Ownership comparison — "is it me holding it?" — is the SDK consumer's job, and is also surfaced by the Phase 5 `/global-state claims --mine` skill.)
-  3. `em-proj state release <area>` releases a claim held by the current session; releasing another session's claim errors with exit code 3 (escape hatch is the `/global-state` skill, not the SDK)
+  2. `em-proj state check <area>` returns the holder record `{session_id, project_hash, reason, claimed_at, expires_at}` in JSON (or formatted text on TTY), with exit code 0 if held by anyone and 2 if not held. (Ownership comparison — "is it me holding it?" — is the SDK consumer's job, and is also surfaced by the Phase 5 `/em-global-state claims --mine` skill.)
+  3. `em-proj state release <area>` releases a claim held by the current session; releasing another session's claim errors with exit code 3 (escape hatch is the `/em-global-state` skill, not the SDK)
   4. With `CLAUDE_CODE_SESSION_ID` unset and no fallback resolvable, `em-proj state claim <area>` refuses with exit code 1 and a one-line "anonymous claims refused" error
 **Plans:** 4 plans
 Plans:
@@ -100,13 +100,13 @@ Plans:
 - [x] 04-04-PLAN.md — Structural shape test (test_phase_04_shape.py) + verify-phase.sh 04 acceptance gate (CLAIM-01, CLAIM-02, CLAIM-03)
 **UI hint**: no
 
-### Phase 5: `/global-state` Skill Surface
+### Phase 5: `/em-global-state` Skill Surface
 **Goal**: A sub-agent or human can introspect cross-session state and exercise an escape hatch for stuck holders without hand-rolling Redis queries — the read+escape-hatch surface over the now-complete state primitive.
 **Depends on**: Phase 4
 **Requirements**: SKILL-01, SKILL-02, SKILL-03
 **Success Criteria** (what must be TRUE):
-  1. `/global-state list`, `/global-state get <key>`, `/global-state locks [--mine|--stale]`, and `/global-state claims [--mine|--active|--stale]` all return parseable, stable-schema output suitable for a sub-agent to consume
-  2. `/global-state unlock <name>` and `/global-state release <area>` work as escape hatches; with a live holder, the skill prompts for confirmation; `--force` bypasses confirmation
+  1. `/em-global-state list`, `/em-global-state get <key>`, `/em-global-state locks [--mine|--stale]`, and `/em-global-state claims [--mine|--active|--stale]` all return parseable, stable-schema output suitable for a sub-agent to consume
+  2. `/em-global-state unlock <name>` and `/em-global-state release <area>` work as escape hatches; with a live holder, the skill prompts for confirmation; `--force` bypasses confirmation
   3. The skill never writes through itself except for `unlock`/`release` (verified by audit of the skill surface) — all other writes flow through code, not ad-hoc debug commands
 **Plans**: TBD
 **UI hint**: no
@@ -133,5 +133,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. CLI Shell + KV Primitive | 0/TBD | Not started | - |
 | 3. Identity + Advisory Locks | 6/6 | Complete | 2026-05-23 |
 | 4. Long-Lived Claims | 4/4 | Complete | 2026-05-24 |
-| 5. `/global-state` Skill Surface | 0/TBD | Not started | - |
+| 5. `/em-global-state` Skill Surface | 0/TBD | Not started | - |
 | 6. gsd-sdk Workstream Consumer | 0/TBD | Not started | - |

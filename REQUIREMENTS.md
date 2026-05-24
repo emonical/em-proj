@@ -42,10 +42,10 @@ Requirements for milestone v1.0 — bootstrap `em-proj` + land the `state` primi
 - [ ] **IDENT-01**: Session-id is resolved from `CLAUDE_CODE_SESSION_ID` with a documented fallback chain; project-hash is derived from `$PWD` (git-toplevel fallback) via `tr '/' '-'` on the absolute path, matching the `~/.claude/projects/<hash>/` convention exactly
 - [ ] **IDENT-02**: Stale detection uses a composite `{pid, proc_start_epoch, boot_id}` with TTL as the final backstop
 
-### SKILL — `/global-state` Claude skill
+### SKILL — `/em-global-state` Claude skill
 
-- [ ] **SKILL-01**: User (or sub-agent) can run `/global-state list`, `get <key>`, `locks [--mine|--stale]`, `claims [--mine|--active|--stale]` for parseable read access
-- [ ] **SKILL-02**: User can run `/global-state unlock|release [--force]` as an escape hatch, with confirmation prompts when a live holder exists
+- [ ] **SKILL-01**: User (or sub-agent) can run `/em-global-state list`, `get <key>`, `locks [--mine|--stale]`, `claims [--mine|--active|--stale]` for parseable read access
+- [ ] **SKILL-02**: User can run `/em-global-state unlock|release [--force]` as an escape hatch, with confirmation prompts when a live holder exists
 - [ ] **SKILL-03**: Skill output is parseable by sub-agents (stable schema, no ad-hoc formatting)
 
 ### CONSUMER — first validating consumer
@@ -95,7 +95,7 @@ Explicitly excluded from M1. Documented to prevent scope creep.
 | Cross-machine sync | Single-machine, single-user target |
 | Multi-key atomic transactions | Redis MULTI/EXEC + Lua available as escape hatch, but no SDK verb in M1 |
 | Other AI CLIs as first-class consumers | Design must not preclude them; Claude Code is the only initial consumer |
-| Web UI / TUI dashboard | The `/global-state` skill is the human surface |
+| Web UI / TUI dashboard | The `/em-global-state` skill is the human surface |
 
 ## Traceability
 
@@ -141,7 +141,7 @@ Which phases cover which requirements. Updated by the roadmapper.
 | Phase 2: CLI Shell + KV Primitive | CLI-01, CLI-02, CLI-03, CLI-04, CLI-05, KV-01, KV-02, REDIS-02 | 8 |
 | Phase 3: Identity + Advisory Locks | IDENT-01, IDENT-02, LOCK-01, LOCK-02, LOCK-03 | 5 |
 | Phase 4: Long-Lived Claims | CLAIM-01, CLAIM-02, CLAIM-03 | 3 |
-| Phase 5: `/global-state` Skill Surface | SKILL-01, SKILL-02, SKILL-03 | 3 |
+| Phase 5: `/em-global-state` Skill Surface | SKILL-01, SKILL-02, SKILL-03 | 3 |
 | Phase 6: gsd-sdk Workstream Consumer | CONSUMER-01, CONSUMER-02 | 2 |
 | **Total** | | **24** |
 
