@@ -269,12 +269,22 @@ def test_claim_anonymous_fires_before_redis(monkeypatch):
 
     No clean_db fixture here — we verify the exit code is 1 even without
     needing a real Redis connection for the anon check.
+
+    Mocks die_if_redis_unreachable so that if the ordering were accidentally
+    reversed (anonymous check moved after the Redis pre-check), this test
+    would fail rather than passing for the wrong reason (Redis just happens
+    to be running).
     """
+    redis_calls: list[bool] = []
+    monkeypatch.setattr(
+        "em_proj.state.die_if_redis_unreachable",
+        lambda *a, **kw: redis_calls.append(True),
+    )
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
-    # Point at db=15 (normal), but we should never reach Redis at all
     result = runner.invoke(app, ["state", "claim", "docs/api"])
     assert result.exit_code == 1, f"Expected exit 1; got {result.exit_code}"
     output_text = result.output
     stderr_text = getattr(result, "stderr", "") or ""
     combined = output_text + stderr_text
     assert "anonymous claims refused" in combined
+    assert not redis_calls, "die_if_redis_unreachable must not be called before anonymous refusal"
