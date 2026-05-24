@@ -317,9 +317,9 @@ def claim_take(area: str, ttl: int = TTL_DEFAULT, reason: str | None = None) -> 
       5. Build redis_key via _build_redis_key(holder["project_hash"], area)
       6. EVAL LUA_CLAIM_REFRESH_OR_TAKE with all ARGV values
       7. If result == "taken": return holder
-      8. If result == "refreshed": HGETALL the key, return _hgetall_to_holder(raw)
-         NOTE: do NOT use the locally-built holder for "refreshed" — Redis is
-         authoritative (another call may have set claimed_at earlier).
+      8. If result == "refreshed": return holder directly (race-free — the
+         locally-built holder already has the correct expires_at; claimed_at
+         is never mutated on refresh, so a separate HGETALL would be TOCTOU).
       9. If result == "conflict": HGETALL existing, _hgetall_to_holder, raise
          HeldByAnother(holder=existing)
 
@@ -354,9 +354,12 @@ def claim_take(area: str, ttl: int = TTL_DEFAULT, reason: str | None = None) -> 
         return holder
 
     if result == "refreshed":
-        # Redis is authoritative for claimed_at — read back the full holder
-        raw = client.hgetall(redis_key)
-        return _hgetall_to_holder(raw)
+        # Return the locally-built holder — it has the correct session_id,
+        # project_hash, reason, claimed_at, and freshly-computed expires_at.
+        # A separate HGETALL here would be a TOCTOU race (the key can expire
+        # between the Lua EVAL and this round-trip). claimed_at is NOT mutated
+        # by a refresh, so the local holder value is authoritative.
+        return holder
 
     # result == "conflict" — different holder present
     raw = client.hgetall(redis_key)
