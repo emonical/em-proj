@@ -85,7 +85,12 @@ Plans:
   2. `em-proj state check <area>` returns the holder record `{session_id, project_hash, reason, claimed_at, expires_at}` in JSON (or formatted text on TTY), with exit code 0 if held by anyone, 2 if not held, 3 if held by another session
   3. `em-proj state release <area>` releases a claim held by the current session; releasing another session's claim errors with exit code 3 (escape hatch is the `/global-state` skill, not the SDK)
   4. With `CLAUDE_CODE_SESSION_ID` unset and no fallback resolvable, `em-proj state claim <area>` refuses with exit code 1 and a one-line "anonymous claims refused" error
-**Plans**: TBD
+**Plans:** 4 plans
+Plans:
+- [ ] 04-01-PLAN.md — src/em_proj/state/claim.py pure ops + Lua scripts (CLAIM-01, CLAIM-02)
+- [ ] 04-02-PLAN.md — claim/release/check verb wiring in state/__init__.py + anonymous-refusal gate (CLAIM-01, CLAIM-02, CLAIM-03)
+- [ ] 04-03-PLAN.md — Multi-process race tests: race-winner/loser, holder refresh, non-holder release, anonymous refusal (CLAIM-01, CLAIM-02, CLAIM-03)
+- [ ] 04-04-PLAN.md — Structural shape test (test_phase_04_shape.py) + verify-phase.sh 04 acceptance gate (CLAIM-01, CLAIM-02, CLAIM-03)
 **UI hint**: no
 
 ### Phase 5: `/global-state` Skill Surface
@@ -120,6 +125,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Test Harness + Redis Foundation | 0/TBD | Not started | - |
 | 2. CLI Shell + KV Primitive | 0/TBD | Not started | - |
 | 3. Identity + Advisory Locks | 6/6 | Complete | 2026-05-23 |
-| 4. Long-Lived Claims | 0/TBD | Not started | - |
+| 4. Long-Lived Claims | 0/4 | Not started | - |
 | 5. `/global-state` Skill Surface | 0/TBD | Not started | - |
 | 6. gsd-sdk Workstream Consumer | 0/TBD | Not started | - |
