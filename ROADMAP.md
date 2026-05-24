@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 1: Test Harness + Redis Foundation** - Multi-process race harness and persistent Redis backend, the substrate every subsequent phase races against
 - [ ] **Phase 2: CLI Shell + KV Primitive** - Installable `em-proj` CLI with `state get|set|del|list` (incl. `--ttl`), semantic exit codes, and Redis-error UX
 - [ ] **Phase 3: Identity + Advisory Locks** - Session/project identity resolution, stale-detection composite, and short-lived `lock|unlock|lock --hold` primitives
-- [ ] **Phase 4: Long-Lived Claims** - `claim|release|check` with TTL, refreshable holder metadata, and anonymous-claim refusal
+- [x] **Phase 4: Long-Lived Claims** - `claim|release|check` with TTL, refreshable holder metadata, and anonymous-claim refusal
 - [ ] **Phase 5: `/global-state` Skill Surface** - Sub-agent-parseable read view and escape-hatch over the complete state primitive
 - [ ] **Phase 6: gsd-sdk Workstream Consumer** - `gsd-sdk workstream.set` shells out through `em-proj state claim`; concurrent-session clobber demonstrated as resolved end-to-end
 
@@ -82,15 +82,22 @@ Plans:
 **Requirements**: CLAIM-01, CLAIM-02, CLAIM-03
 **Success Criteria** (what must be TRUE):
   1. `em-proj state claim <area>` takes a 30-minute claim by default; `--ttl <secs>` overrides; repeating the call by the same holder refreshes the TTL rather than erroring
-  2. `em-proj state check <area>` returns the holder record `{session_id, project_hash, reason, claimed_at, expires_at}` in JSON (or formatted text on TTY), with exit code 0 if held by anyone, 2 if not held, 3 if held by another session
+  2. `em-proj state check <area>` returns the holder record `{session_id, project_hash, reason, claimed_at, expires_at}` in JSON (or formatted text on TTY), with exit code 0 if held by anyone and 2 if not held. (Ownership comparison — "is it me holding it?" — is the SDK consumer's job, and is also surfaced by the Phase 5 `/global-state claims --mine` skill.)
   3. `em-proj state release <area>` releases a claim held by the current session; releasing another session's claim errors with exit code 3 (escape hatch is the `/global-state` skill, not the SDK)
   4. With `CLAUDE_CODE_SESSION_ID` unset and no fallback resolvable, `em-proj state claim <area>` refuses with exit code 1 and a one-line "anonymous claims refused" error
 **Plans:** 4 plans
 Plans:
-- [ ] 04-01-PLAN.md — src/em_proj/state/claim.py pure ops + Lua scripts (CLAIM-01, CLAIM-02)
-- [ ] 04-02-PLAN.md — claim/release/check verb wiring in state/__init__.py + anonymous-refusal gate (CLAIM-01, CLAIM-02, CLAIM-03)
-- [ ] 04-03-PLAN.md — Multi-process race tests: race-winner/loser, holder refresh, non-holder release, anonymous refusal (CLAIM-01, CLAIM-02, CLAIM-03)
-- [ ] 04-04-PLAN.md — Structural shape test (test_phase_04_shape.py) + verify-phase.sh 04 acceptance gate (CLAIM-01, CLAIM-02, CLAIM-03)
+**Wave 1**
+- [x] 04-01-PLAN.md — src/em_proj/state/claim.py pure ops + Lua scripts (CLAIM-01, CLAIM-02)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [x] 04-02-PLAN.md — claim/release/check verb wiring in state/__init__.py + anonymous-refusal gate (CLAIM-01, CLAIM-02, CLAIM-03)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [x] 04-03-PLAN.md — Multi-process race tests: race-winner/loser, holder refresh, non-holder release, anonymous refusal (CLAIM-01, CLAIM-02, CLAIM-03)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [x] 04-04-PLAN.md — Structural shape test (test_phase_04_shape.py) + verify-phase.sh 04 acceptance gate (CLAIM-01, CLAIM-02, CLAIM-03)
 **UI hint**: no
 
 ### Phase 5: `/global-state` Skill Surface
@@ -125,6 +132,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Test Harness + Redis Foundation | 0/TBD | Not started | - |
 | 2. CLI Shell + KV Primitive | 0/TBD | Not started | - |
 | 3. Identity + Advisory Locks | 6/6 | Complete | 2026-05-23 |
-| 4. Long-Lived Claims | 0/4 | Not started | - |
+| 4. Long-Lived Claims | 4/4 | Complete | 2026-05-24 |
 | 5. `/global-state` Skill Surface | 0/TBD | Not started | - |
 | 6. gsd-sdk Workstream Consumer | 0/TBD | Not started | - |

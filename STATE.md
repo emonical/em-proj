@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: completed
 stopped_at: Phase 3 planned (6 plans across 6 waves)
-last_updated: "2026-05-23T22:00:32.163Z"
-last_activity: 2026-05-23 -- Phase 03 marked complete
+last_updated: "2026-05-24T18:09:28.852Z"
+last_activity: 2026-05-24 -- Phase 04 marked complete
 progress:
   total_phases: 6
-  completed_phases: 3
-  total_plans: 15
-  completed_plans: 15
-  percent: 50
+  completed_phases: 4
+  total_plans: 19
+  completed_plans: 19
+  percent: 67
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-16)
 
 **Core value:** A sub-agent, skill, or session can ask the substrate "is it safe to edit X, or is someone else working there?" and get a structured, parseable answer grounded in current cross-session reality.
-**Current focus:** Phase 03 — identity-advisory-locks
+**Current focus:** Phase 04 — Long-Lived Claims
 
 ## Current Position
 
-Phase: 03 — COMPLETE
-Plan: 1 of 6
-Status: Phase 03 complete
-Last activity: 2026-05-23 -- Phase 03 marked complete
+Phase: 04 — COMPLETE
+Plan: 1 of 4
+Status: Phase 04 complete
+Last activity: 2026-05-24 -- Phase 04 marked complete
 
 Progress: [██░░░░] 33%
 
