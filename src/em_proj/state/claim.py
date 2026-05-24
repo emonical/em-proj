@@ -428,11 +428,13 @@ def claim_check(area: str) -> dict:  # type: ignore[type-arg]
     redis_key = _build_redis_key(project_hash, area)
     client = get_client()
 
-    # Lua returns False (Python None/False) when absent, or a flat list of
-    # alternating field/value pairs when the HASH exists.
+    # Lua returns false (Python None via redis-py decode_responses=True) when
+    # the key is absent, or a flat list of alternating field/value pairs when
+    # the HASH exists. Test for None explicitly — `if not raw_result` would
+    # also be truthy for an empty list [], masking corrupted-HASH state.
     raw_result = client.eval(LUA_CLAIM_CHECK, 1, redis_key)
 
-    if not raw_result:
+    if raw_result is None:
         raise ClaimNotHeld(message=f"area '{area}' is not claimed")
 
     # HGETALL returns alternating [field, value, field, value, ...] via Lua.
