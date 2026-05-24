@@ -145,7 +145,8 @@ def get(
         emit_not_found(f"key '{key}' not set", json_mode=json_mode)
     except ValidationError as e:
         emit_error(e.code, e.message, json_mode=json_mode)
-    emit_ok({"key": key, "value": value}, json_mode=json_mode)
+    else:
+        emit_ok({"key": key, "value": value}, json_mode=json_mode)
 
 
 @state_app.command("set")
@@ -202,7 +203,8 @@ def delete_kv(
         deleted = kv_del(key)
     except ValidationError as e:
         emit_error(e.code, e.message, json_mode=json_mode)
-    emit_ok({"key": key, "deleted": deleted}, json_mode=json_mode)
+    else:
+        emit_ok({"key": key, "deleted": deleted}, json_mode=json_mode)
 
 
 @state_app.command("list")
