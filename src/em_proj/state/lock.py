@@ -543,6 +543,54 @@ def _cleanup(
         pass  # displaced mid-hold — correct behavior per D-06
 
 
+def lock_list_by_prefix(
+    mine: bool = False,
+    stale: bool = False,
+) -> list[dict]:  # type: ignore[type-arg]
+    """Return a list of all holder dicts for keys under KEY_PREFIX.
+
+    Scans state:lock:* via cursor-based SCAN (non-blocking) and returns
+    each parsed holder dict.  Optional filter predicates:
+
+      - mine=True   : only dicts where holder["session_id"] == resolve_session_id()
+      - stale=True  : only dicts where is_holder_stale(holder) is True
+      - mine + stale: both conditions must be satisfied (AND logic)
+
+    Keys that expire between SCAN and GET are silently skipped (None → skip).
+    Keys whose value fails JSON decoding (ValueError / KeyError) are silently
+    skipped — malformed keys are a best-effort surface, not a crash.
+
+    Returns [] when no locks exist — an empty list is a valid result, not an error.
+
+    MODULE-PUBLIC: wired by Plan 05-03's lock_list verb.
+    Does NOT catch redis.ConnectionError (D-18 carry).
+    """
+    from em_proj.identity import resolve_session_id  # local import: avoids circular risk
+
+    client = get_client()
+    results: list[dict] = []  # type: ignore[type-arg]
+
+    for key in client.scan_iter(match=KEY_PREFIX + "*", count=100):
+        raw = client.get(key)
+        if raw is None:
+            # Key expired between SCAN and GET — skip silently
+            continue
+        try:
+            holder = _decode_holder(raw)
+        except (ValueError, KeyError):
+            # Malformed holder JSON — skip silently (T-5-01-02 accept)
+            continue
+
+        if mine and holder.get("session_id") != resolve_session_id():
+            continue
+        if stale and not is_holder_stale(holder):
+            continue
+
+        results.append(holder)
+
+    return results
+
+
 def lock_force_displace(name: str, ttl: int = DEFAULT_TTL, reason: str | None = None) -> dict:  # type: ignore[type-arg]
     """Atomically replace any current holder of state:lock:<name> with a fresh holder
     JSON for the calling process.
