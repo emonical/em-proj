@@ -487,21 +487,18 @@ def claim(
             holder=e.holder,
             json_mode=json_mode,
         )
-    except Exception as e:
-        # ValidationError from claim.py — has .code and .message attributes
-        if hasattr(e, "code") and hasattr(e, "message"):
-            emit_error(e.code, e.message, json_mode=json_mode)
-        raise
-
-    emit_ok(
-        {
-            "area": area,
-            "ttl": effective_ttl,
-            "claimed_at": holder["claimed_at"],
-            "expires_at": holder["expires_at"],
-        },
-        json_mode=json_mode,
-    )
+    except ValidationError as e:
+        emit_error(e.code, e.message, json_mode=json_mode)
+    else:
+        emit_ok(
+            {
+                "area": area,
+                "ttl": effective_ttl,
+                "claimed_at": holder["claimed_at"],
+                "expires_at": holder["expires_at"],
+            },
+            json_mode=json_mode,
+        )
 
 
 @state_app.command("release")
@@ -541,13 +538,11 @@ def release(
                 holder=e.holder,
                 json_mode=json_mode,
             )
-    except Exception as e:
-        if hasattr(e, "code") and hasattr(e, "message"):
-            emit_error(e.code, e.message, json_mode=json_mode)
-        raise
-
-    # 4. Success.
-    emit_ok({"area": area, "released": True}, json_mode=json_mode)
+    except ValidationError as e:
+        emit_error(e.code, e.message, json_mode=json_mode)
+    else:
+        # 4. Success.
+        emit_ok({"area": area, "released": True}, json_mode=json_mode)
 
 
 @state_app.command("check")
