@@ -83,7 +83,7 @@ All deterministic checks pass:
 | Task | Hash | Message |
 |------|------|---------|
 | Task 1 (structural tests) | `caeee2c` | `test(04-04): write test_phase_04_shape.py structural invariants` |
-| Task 2 (SUMMARY + phase gate) | TBD | `test(04-04): structural shape assertions + verify-phase.sh 04 clean` |
+| Task 2 (SUMMARY + phase gate) | `cf50115` (planning branch) | `test(04-04): structural shape assertions + verify-phase.sh 04 clean` |
 
 ## Deviations from Plan
 
