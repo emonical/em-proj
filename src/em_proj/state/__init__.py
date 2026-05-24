@@ -66,6 +66,7 @@ not by the function name, so the verb is still reachable as
 ``em-proj state del``.
 """
 
+import os
 import sys
 import time
 from typing import Annotated
@@ -97,6 +98,16 @@ from em_proj.state.lock import (
     lock_force_displace,
     lock_hold_run,
     lock_release,
+)
+from em_proj.state.claim import (
+    TTL_DEFAULT as CLAIM_TTL_DEFAULT,
+    MIN_TTL as CLAIM_MIN_TTL,
+    MAX_TTL as CLAIM_MAX_TTL,
+    HeldByAnother as ClaimHeldByAnother,
+    ClaimNotHeld,
+    claim_take,
+    claim_release,
+    claim_check,
 )
 
 state_app = typer.Typer(
@@ -417,3 +428,156 @@ def unlock(
 
     # 4. Success.
     emit_ok({"name": name, "released": True}, json_mode=json_mode)
+
+
+@state_app.command("claim")
+def claim(
+    area: Annotated[str, typer.Argument(help="The area to claim.")],
+    ttl: Annotated[
+        int | None,
+        typer.Option(
+            "--ttl",
+            min=CLAIM_MIN_TTL,
+            max=CLAIM_MAX_TTL,
+            help=f"Claim TTL in seconds (default {CLAIM_TTL_DEFAULT}; range {CLAIM_MIN_TTL}–{CLAIM_MAX_TTL}).",
+        ),
+    ] = None,
+    reason: Annotated[
+        str | None,
+        typer.Option("--reason", help="Free-form reason metadata (max 256 chars)."),
+    ] = None,
+    json_flag: Annotated[
+        bool | None,
+        typer.Option("--json/--no-json", help=_JSON_HELP),
+    ] = None,
+) -> None:
+    """Declare a long-lived claim over an area.
+
+    Refreshes TTL if the current session already holds the claim (idempotent).
+
+    Exit code mapping:
+      0 = claimed or TTL refreshed
+      1 = error (anonymous claim refused, validation error)
+      3 = area already held by another session
+    """
+    # 1. Resolve json_mode first so anonymous-refusal error has correct format.
+    json_mode = resolve_json_mode(json_flag)
+
+    # 2. CLAIM-03 / T-4-02-01: anonymous refusal gate — BEFORE any Redis call.
+    #    The pid- fallback in identity.py means IdentityResolutionError is never
+    #    raised in practice; an explicit env check is the correct gate here.
+    if not os.environ.get("CLAUDE_CODE_SESSION_ID", "").strip():
+        emit_error("anonymous_claim", "anonymous claims refused", json_mode=json_mode)
+
+    # 3. Redis pre-check (D-18 chokepoint).
+    client = get_client()
+    die_if_redis_unreachable(client)
+
+    # 4. Call claim op and emit result.
+    effective_ttl = ttl if ttl is not None else CLAIM_TTL_DEFAULT
+    try:
+        holder = claim_take(area, ttl=effective_ttl, reason=reason)
+    except ClaimHeldByAnother as e:
+        emit_held_by_another(
+            "held_by_another",
+            f"Area '{area}' claimed by session "
+            f"{e.holder['session_id'] if e.holder else 'unknown'}",
+            holder=e.holder,
+            json_mode=json_mode,
+        )
+    except Exception as e:
+        # ValidationError from claim.py — has .code and .message attributes
+        if hasattr(e, "code") and hasattr(e, "message"):
+            emit_error(e.code, e.message, json_mode=json_mode)
+        raise
+
+    emit_ok(
+        {
+            "area": area,
+            "ttl": effective_ttl,
+            "claimed_at": holder["claimed_at"],
+            "expires_at": holder["expires_at"],
+        },
+        json_mode=json_mode,
+    )
+
+
+@state_app.command("release")
+def release(
+    area: Annotated[str, typer.Argument(help="The area to release.")],
+    json_flag: Annotated[
+        bool | None,
+        typer.Option("--json/--no-json", help=_JSON_HELP),
+    ] = None,
+) -> None:
+    """Release a long-lived claim held by the current session.
+
+    Exit code mapping:
+      0 = released successfully
+      2 = not held (absent or expired)
+      3 = held by another session
+    """
+    # 1. Resolve json_mode (D-15/D-16).
+    json_mode = resolve_json_mode(json_flag)
+
+    # 2. Redis pre-check (D-18 chokepoint).
+    client = get_client()
+    die_if_redis_unreachable(client)
+
+    # 3. Attempt release; handle HeldByAnother per ROADMAP SC#3.
+    try:
+        claim_release(area)
+    except ClaimHeldByAnother as e:
+        # holder=None → key was absent (expired or never claimed) → exit 2 (not_found).
+        # holder set → different session holds the claim → exit 3 (held_by_another).
+        if e.holder is None:
+            emit_not_found(f"Area '{area}' is not claimed", json_mode=json_mode)
+        else:
+            emit_held_by_another(
+                "held_by_another",
+                f"Area '{area}' is held by session {e.holder['session_id']}",
+                holder=e.holder,
+                json_mode=json_mode,
+            )
+    except Exception as e:
+        if hasattr(e, "code") and hasattr(e, "message"):
+            emit_error(e.code, e.message, json_mode=json_mode)
+        raise
+
+    # 4. Success.
+    emit_ok({"area": area, "released": True}, json_mode=json_mode)
+
+
+@state_app.command("check")
+def check(
+    area: Annotated[str, typer.Argument(help="The area to check.")],
+    json_flag: Annotated[
+        bool | None,
+        typer.Option("--json/--no-json", help=_JSON_HELP),
+    ] = None,
+) -> None:
+    """Check whether an area is claimed and return holder metadata.
+
+    Exit code mapping:
+      0 = area is held (by anyone); returns full 5-field holder dict
+      2 = area is not claimed
+    """
+    # 1. Resolve json_mode (D-15/D-16).
+    json_mode = resolve_json_mode(json_flag)
+
+    # 2. Redis pre-check (D-18 chokepoint).
+    client = get_client()
+    die_if_redis_unreachable(client)
+
+    # 3. Check claim state; emit result.
+    try:
+        holder = claim_check(area)
+    except ClaimNotHeld:
+        emit_not_found(f"Area '{area}' is not claimed", json_mode=json_mode)
+    except Exception as e:
+        if hasattr(e, "code") and hasattr(e, "message"):
+            emit_error(e.code, e.message, json_mode=json_mode)
+        raise
+
+    # 4. Success: emit all 5 holder fields (CLAIM-02 / ROADMAP SC#2).
+    emit_ok({"area": area, "holder": holder}, json_mode=json_mode)
