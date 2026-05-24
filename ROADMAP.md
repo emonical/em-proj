@@ -108,7 +108,20 @@ Plans:
   1. `/em-global-state list`, `/em-global-state get <key>`, `/em-global-state locks [--mine|--stale]`, and `/em-global-state claims [--mine|--active|--stale]` all return parseable, stable-schema output suitable for a sub-agent to consume
   2. `/em-global-state unlock <name>` and `/em-global-state release <area>` work as escape hatches; with a live holder, the skill prompts for confirmation; `--force` bypasses confirmation
   3. The skill never writes through itself except for `unlock`/`release` (verified by audit of the skill surface) — all other writes flow through code, not ad-hoc debug commands
-**Plans**: TBD
+**Plans:** 5 plans
+Plans:
+**Wave 1** *(parallel — no shared files)*
+- [ ] 05-01-PLAN.md — lock_list_by_prefix pure op in lock.py + unit tests (SKILL-01)
+- [ ] 05-02-PLAN.md — claim_list_by_prefix pure op in claim.py + unit tests (SKILL-01)
+
+**Wave 2** *(blocked on Wave 1)*
+- [ ] 05-03-PLAN.md — Wire lock-list + claim-list verbs in state/__init__.py + multi-process tests (SKILL-01, SKILL-03)
+
+**Wave 3** *(blocked on Wave 2)*
+- [ ] 05-04-PLAN.md — ~/.claude/skills/em-global-state/SKILL.md with all 6 verbs + confirmation flow (SKILL-01, SKILL-02, SKILL-03)
+
+**Wave 4** *(blocked on Wave 3)*
+- [ ] 05-05-PLAN.md — Structural shape test (test_phase_05_shape.py) + SC#3 write-boundary audit + verify-phase.sh 05 gate (SKILL-01, SKILL-02, SKILL-03)
 **UI hint**: no
 
 ### Phase 6: gsd-sdk Workstream Consumer
@@ -133,5 +146,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. CLI Shell + KV Primitive | 0/TBD | Not started | - |
 | 3. Identity + Advisory Locks | 6/6 | Complete | 2026-05-23 |
 | 4. Long-Lived Claims | 4/4 | Complete | 2026-05-24 |
-| 5. `/em-global-state` Skill Surface | 0/TBD | Not started | - |
+| 5. `/em-global-state` Skill Surface | 0/5 | Not started | - |
 | 6. gsd-sdk Workstream Consumer | 0/TBD | Not started | - |
