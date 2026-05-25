@@ -1,9 +1,10 @@
-"""state subcommand family — D-14 mount module + the four KV verbs + lock/unlock.
+"""state subcommand family — D-14 mount module + the four KV verbs + lock/unlock/lock-list/claim-list.
 
 This module is the D-14 MOUNT POINT: it defines ``state_app`` (the nested typer
 app mounted from ``cli.py``) and attaches the four KV verbs — ``get``, ``set``,
-``del``, ``list`` — plus the two lock verbs — ``lock``, ``unlock`` — as thin
-per-verb command translation layers.
+``del``, ``list`` — plus the lock verbs — ``lock``, ``unlock``, ``lock-list`` —
+and the claim verbs — ``claim``, ``release``, ``check``, ``claim-list`` — as
+thin per-verb command translation layers.
 
 Design contract — this module holds NO business logic
 -----------------------------------------------------
@@ -24,11 +25,11 @@ those calls.
 D-14/D-17 thin-verb-shell discipline (lock verbs)
 --------------------------------------------------
 Lock verbs import ONLY public symbols from ``em_proj.state.lock``:
-``lock_acquire``, ``lock_release``, ``lock_force_displace``, ``HeldByAnother``,
-``DEFAULT_TTL``, ``MIN_TTL``, ``MAX_TTL``. Private helpers (underscore-prefixed)
-in lock.py stay module-private; the verb body has zero knowledge of the key
-namespace. Displacement Lua is server-side via ``lock_force_displace`` — no
-private-symbol leakage into this module.
+``lock_acquire``, ``lock_release``, ``lock_force_displace``, ``lock_list_by_prefix``,
+``HeldByAnother``, ``DEFAULT_TTL``, ``MIN_TTL``, ``MAX_TTL``. Private helpers
+(underscore-prefixed) in lock.py stay module-private; the verb body has zero
+knowledge of the key namespace. Displacement Lua is server-side via
+``lock_force_displace`` — no private-symbol leakage into this module.
 
 D-07 — --warn TTY gate
 ----------------------
@@ -74,6 +75,7 @@ from typing import Annotated
 import typer
 
 from em_proj.output import (
+    _HOLDER_DISCLOSURE_KEYS,
     emit_error,
     emit_held_by_another,
     emit_not_found,
@@ -97,6 +99,7 @@ from em_proj.state.lock import (
     lock_acquire,
     lock_force_displace,
     lock_hold_run,
+    lock_list_by_prefix,
     lock_release,
 )
 from em_proj.state.claim import (
@@ -105,9 +108,10 @@ from em_proj.state.claim import (
     MAX_TTL as CLAIM_MAX_TTL,
     HeldByAnother as ClaimHeldByAnother,
     ClaimNotHeld,
-    claim_take,
-    claim_release,
     claim_check,
+    claim_list_by_prefix,
+    claim_release,
+    claim_take,
 )
 
 state_app = typer.Typer(
@@ -578,3 +582,88 @@ def check(
 
     # 4. Success: emit all 5 holder fields (CLAIM-02 / ROADMAP SC#2).
     emit_ok({"area": area, "holder": holder}, json_mode=json_mode)
+
+
+@state_app.command("lock-list")
+def lock_list(
+    mine: Annotated[
+        bool,
+        typer.Option("--mine/--no-mine", help="Only show locks held by the current session."),
+    ] = False,
+    stale: Annotated[
+        bool,
+        typer.Option("--stale/--no-stale", help="Only show locks held by dead processes."),
+    ] = False,
+    json_flag: Annotated[
+        bool | None,
+        typer.Option("--json/--no-json", help=_JSON_HELP),
+    ] = None,
+) -> None:
+    """List all advisory locks, with optional filters.
+
+    Returns a JSON array of lock holder objects (boot_id and proc_start_epoch
+    excluded per _HOLDER_DISCLOSURE_KEYS — T-5-03-01 information-disclosure mitigation).
+
+    Exit code mapping:
+      0 = success (empty list is still exit 0)
+      1 = Redis unreachable or validation error
+    """
+    # 1. Resolve json_mode (D-15/D-16).
+    json_mode = resolve_json_mode(json_flag)
+
+    # 2. Redis pre-check (D-18 chokepoint).
+    client = get_client()
+    die_if_redis_unreachable(client)
+
+    # 3. Call pure op; apply _HOLDER_DISCLOSURE_KEYS redaction (T-5-03-01).
+    holders = lock_list_by_prefix(mine=mine, stale=stale)
+    redacted = [
+        {k: h[k] for k in _HOLDER_DISCLOSURE_KEYS if k in h}
+        for h in holders
+    ]
+
+    # 4. Emit.
+    emit_ok({"items": redacted}, json_mode=json_mode)
+
+
+@state_app.command("claim-list")
+def claim_list(
+    mine: Annotated[
+        bool,
+        typer.Option("--mine/--no-mine", help="Only show claims held by the current session."),
+    ] = False,
+    active: Annotated[
+        bool,
+        typer.Option("--active/--no-active", help="Only show claims with an active Redis TTL (TTL > 0)."),
+    ] = False,
+    stale: Annotated[
+        bool,
+        typer.Option("--stale/--no-stale", help="Only show claims with no active TTL (persistent/expired)."),
+    ] = False,
+    json_flag: Annotated[
+        bool | None,
+        typer.Option("--json/--no-json", help=_JSON_HELP),
+    ] = None,
+) -> None:
+    """List all claims scoped to the current project, with optional filters.
+
+    Returns a JSON array of claim holder objects. All 5 claim fields are emitted:
+    session_id, project_hash, reason, claimed_at, expires_at (T-5-03-02 accept —
+    claims have no boot_id or proc_start_epoch to redact).
+
+    Exit code mapping:
+      0 = success (empty list is still exit 0)
+      1 = Redis unreachable or validation error
+    """
+    # 1. Resolve json_mode (D-15/D-16).
+    json_mode = resolve_json_mode(json_flag)
+
+    # 2. Redis pre-check (D-18 chokepoint).
+    client = get_client()
+    die_if_redis_unreachable(client)
+
+    # 3. Call pure op; no redaction needed for claims (all 5 fields are safe).
+    holders = claim_list_by_prefix(mine=mine, active=active, stale=stale)
+
+    # 4. Emit.
+    emit_ok({"items": holders}, json_mode=json_mode)
