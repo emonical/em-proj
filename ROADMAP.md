@@ -132,7 +132,14 @@ Plans:
   1. `gsd-sdk workstream.set <name>` shells out to `em-proj state claim` (no source extension of `gsd-sdk` — integration is via subprocess only)
   2. Two harness children simulating concurrent Claude Code sessions in the same project both attempting `workstream.set` produce a deterministic outcome: one wins the claim, the other receives a structured "held by session <id>" error rather than a silent clobber
   3. A human-runnable demo (or harness fixture) reproduces the original pain (clobber under the old path) and the resolution (claim refusal under the new path) side-by-side
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+**Wave 1** *(parallel — no shared files between plans)*
+- [x] 06-01-PLAN.md — Patch npm-installed sdk/dist/query/workstream.js + sdk/src/query/workstream.ts to gate setActiveWorkstream() behind `em-proj state claim` shellout (CONSUMER-01)
+- [x] 06-02-PLAN.md — em-proj multi-process tests: test_workstream_consumer_race.py (race + refresh + Q-B fallback) + test_workstream_clobber_demo.py (SC#3 side-by-side) (CONSUMER-02)
+
+**Wave 2** *(blocked on Wave 1)*
+- [x] 06-03-PLAN.md — tests/structural/test_phase_06_shape.py (Q-D portable resolver + Pattern D xfail-on-reversion) + bash scripts/verify-phase.sh 06 acceptance gate (CONSUMER-01, CONSUMER-02)
 **UI hint**: no
 
 ## Progress
