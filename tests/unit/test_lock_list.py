@@ -250,3 +250,56 @@ def test_lock_list_mine_and_stale_combined(clean_db) -> None:
         assert result[0]["pid"] == 99999998
     finally:
         lock_release("livelock")
+
+
+# ---------------------------------------------------------------------------
+# Test 7 — SCAN→GET expiry guard: raw=None is skipped silently (WR-02)
+# ---------------------------------------------------------------------------
+
+
+def test_lock_list_scan_get_expiry_race(clean_db) -> None:
+    """Key that expires between SCAN and GET (client.get returns None) is skipped.
+
+    lock_list_by_prefix handles the TOCTOU race by checking `if raw is None: continue`.
+    This test exercises that path by writing a key with a very short TTL (EX=1),
+    waiting for it to expire, then calling lock_list_by_prefix to confirm it returns []
+    rather than raising or including a ghost entry.
+
+    The key is written directly (not via lock_acquire) to keep TTL = 1s without
+    any refresher thread that would extend it.
+
+    WR-02 regression guard.
+    """
+    import time as _time
+
+    # Write a lock-namespace key with EX=1 directly so it expires quickly.
+    # This exercises the `raw is None` guard in lock_list_by_prefix.
+    ephemeral_key = KEY_PREFIX + "ephemeral-race-lock"
+    composite = current_process_composite()
+    ephemeral_holder = {
+        **composite,
+        "pid": 99999990,
+        "session_id": "ephemeral-race-session",
+        "reason": "expiry race test",
+        "acquired_at": _time.time(),
+        "expires_at": _time.time() + 1,
+    }
+    clean_db.set(ephemeral_key, _encode_holder(ephemeral_holder), ex=1)
+
+    # Confirm the key is initially visible.
+    pre_expire = lock_list_by_prefix()
+    assert any(h.get("session_id") == "ephemeral-race-session" for h in pre_expire), (
+        "Ephemeral key must appear before expiry"
+    )
+
+    # Wait for the key to expire.
+    _time.sleep(1.1)
+
+    # After expiry, lock_list_by_prefix must return [] (or a list without the
+    # ephemeral key) — the raw=None guard silently skips the expired key.
+    post_expire = lock_list_by_prefix()
+    ghost_entries = [h for h in post_expire if h.get("session_id") == "ephemeral-race-session"]
+    assert ghost_entries == [], (
+        f"WR-02: expired key must be silently skipped by the SCAN→GET guard; "
+        f"got ghost entries: {ghost_entries!r}"
+    )
