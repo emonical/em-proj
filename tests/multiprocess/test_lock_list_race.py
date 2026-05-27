@@ -72,12 +72,12 @@ def test_lock_list_concurrent(clean_db) -> None:
         "CLAUDE_CODE_SESSION_ID": "session-lock-list-B",
     }
 
-    # Child A: acquire a lock, then immediately call lock-list --json.
-    # The acquire and list are sequential within child A's process; we rely on
-    # child A having the lock already held before the list call.
-    # We do this sequentially for child A to ensure the lock is present:
+    # Child A: acquire a lock with an explicit --ttl 30 so the test is not
+    # sensitive to slow Redis.  The two lock-list children must finish within
+    # 30s combined; the communicate() calls time out at 10s each, so 30s is
+    # a safe margin.  WR-04: explicit TTL avoids relying on the 60s default.
     acquire_result = _run(
-        [EM_PROJ_BIN, "state", "lock", "list-test-lock"],
+        [EM_PROJ_BIN, "state", "lock", "list-test-lock", "--ttl", "30"],
         extra_env={"CLAUDE_CODE_SESSION_ID": session_a},
     )
     assert acquire_result.returncode == 0, (
@@ -85,85 +85,98 @@ def test_lock_list_concurrent(clean_db) -> None:
         f"stderr={acquire_result.stderr!r}"
     )
 
-    # Now both children call lock-list concurrently.
-    proc_a = subprocess.Popen(
-        [EM_PROJ_BIN, "state", "lock-list", "--json"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        env=env_a,
-    )
-    proc_b = subprocess.Popen(
-        [EM_PROJ_BIN, "state", "lock-list", "--json"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        env=env_b,
-    )
-
+    # Release the lock at the end of the test regardless of outcome.
+    # WR-04: explicit release ensures the key doesn't linger and prevents
+    # the 30s TTL lock from polluting subsequent test runs in the same session.
     try:
-        stdout_a, stderr_a = proc_a.communicate(timeout=10.0)
-    except subprocess.TimeoutExpired:
-        proc_a.kill()
-        proc_a.communicate()
-        raise AssertionError("Child A (lock-list) did not exit within 10s")
-
-    try:
-        stdout_b, stderr_b = proc_b.communicate(timeout=10.0)
-    except subprocess.TimeoutExpired:
-        proc_b.kill()
-        proc_b.communicate()
-        raise AssertionError("Child B (lock-list) did not exit within 10s")
-
-    # Both must exit 0.
-    assert proc_a.returncode == 0, (
-        f"Child A lock-list failed: rc={proc_a.returncode} "
-        f"stderr={stderr_a!r} stdout={stdout_a!r}"
-    )
-    assert proc_b.returncode == 0, (
-        f"Child B lock-list failed: rc={proc_b.returncode} "
-        f"stderr={stderr_b!r} stdout={stdout_b!r}"
-    )
-
-    # Both must return valid JSON.
-    try:
-        data_a = json.loads(stdout_a)
-    except json.JSONDecodeError as e:
-        raise AssertionError(f"Child A output is not valid JSON: {e!r}\nOutput: {stdout_a!r}") from e
-
-    try:
-        data_b = json.loads(stdout_b)
-    except json.JSONDecodeError as e:
-        raise AssertionError(f"Child B output is not valid JSON: {e!r}\nOutput: {stdout_b!r}") from e
-
-    # Both must have the expected envelope shape.
-    assert data_a.get("status") == "ok", (
-        f"Child A envelope status not 'ok': {data_a!r}"
-    )
-    assert data_b.get("status") == "ok", (
-        f"Child B envelope status not 'ok': {data_b!r}"
-    )
-    assert "items" in data_a.get("data", {}), (
-        f"Child A missing 'items' in data: {data_a!r}"
-    )
-    assert "items" in data_b.get("data", {}), (
-        f"Child B missing 'items' in data: {data_b!r}"
-    )
-
-    # The lock was acquired by session_a; it must appear in child A's output.
-    items_a = data_a["data"]["items"]
-    assert any(item.get("session_id") == session_a for item in items_a), (
-        f"Expected session_id={session_a!r} in child A lock-list items; "
-        f"got items: {items_a!r}"
-    )
-
-    # Verify no boot_id or proc_start_epoch leaked into any item (T-5-03-01).
-    for item in items_a:
-        assert "boot_id" not in item, (
-            f"boot_id leaked in lock-list output item: {item!r}"
+        # Now both children call lock-list concurrently.
+        proc_a = subprocess.Popen(
+            [EM_PROJ_BIN, "state", "lock-list", "--json"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env_a,
         )
-        assert "proc_start_epoch" not in item, (
-            f"proc_start_epoch leaked in lock-list output item: {item!r}"
+        proc_b = subprocess.Popen(
+            [EM_PROJ_BIN, "state", "lock-list", "--json"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env_b,
+        )
+
+        try:
+            stdout_a, stderr_a = proc_a.communicate(timeout=10.0)
+        except subprocess.TimeoutExpired:
+            proc_a.kill()
+            proc_a.communicate()
+            raise AssertionError("Child A (lock-list) did not exit within 10s")
+
+        try:
+            stdout_b, stderr_b = proc_b.communicate(timeout=10.0)
+        except subprocess.TimeoutExpired:
+            proc_b.kill()
+            proc_b.communicate()
+            raise AssertionError("Child B (lock-list) did not exit within 10s")
+
+        # Both must exit 0.
+        assert proc_a.returncode == 0, (
+            f"Child A lock-list failed: rc={proc_a.returncode} "
+            f"stderr={stderr_a!r} stdout={stdout_a!r}"
+        )
+        assert proc_b.returncode == 0, (
+            f"Child B lock-list failed: rc={proc_b.returncode} "
+            f"stderr={stderr_b!r} stdout={stdout_b!r}"
+        )
+
+        # Both must return valid JSON.
+        try:
+            data_a = json.loads(stdout_a)
+        except json.JSONDecodeError as e:
+            raise AssertionError(f"Child A output is not valid JSON: {e!r}\nOutput: {stdout_a!r}") from e
+
+        try:
+            data_b = json.loads(stdout_b)
+        except json.JSONDecodeError as e:
+            raise AssertionError(f"Child B output is not valid JSON: {e!r}\nOutput: {stdout_b!r}") from e
+
+        # Both must have the expected envelope shape.
+        assert data_a.get("status") == "ok", (
+            f"Child A envelope status not 'ok': {data_a!r}"
+        )
+        assert data_b.get("status") == "ok", (
+            f"Child B envelope status not 'ok': {data_b!r}"
+        )
+        assert "items" in data_a.get("data", {}), (
+            f"Child A missing 'items' in data: {data_a!r}"
+        )
+        assert "items" in data_b.get("data", {}), (
+            f"Child B missing 'items' in data: {data_b!r}"
+        )
+
+        # The lock was acquired by session_a; it must appear in child A's output.
+        items_a = data_a["data"]["items"]
+        assert any(item.get("session_id") == session_a for item in items_a), (
+            f"Expected session_id={session_a!r} in child A lock-list items; "
+            f"got items: {items_a!r}"
+        )
+
+        # Verify no boot_id or proc_start_epoch leaked into any item (T-5-03-01).
+        for item in items_a:
+            assert "boot_id" not in item, (
+                f"boot_id leaked in lock-list output item: {item!r}"
+            )
+            assert "proc_start_epoch" not in item, (
+                f"proc_start_epoch leaked in lock-list output item: {item!r}"
+            )
+
+    finally:
+        # Explicit release so the lock doesn't linger for 30s after test exit.
+        # clean_db FLUSHDB would also clean it, but explicit release is faster
+        # and guards against the case where clean_db teardown is delayed.
+        _run(
+            [EM_PROJ_BIN, "state", "unlock", "list-test-lock"],
+            extra_env={"CLAUDE_CODE_SESSION_ID": session_a},
         )
 
 
