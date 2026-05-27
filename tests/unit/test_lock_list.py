@@ -136,7 +136,11 @@ def test_lock_list_stale_filter(clean_db) -> None:
     """stale=True returns only locks whose holder fails is_holder_stale.
 
     A holder with pid=99999999 (guaranteed absent), proc_start_epoch=0.0,
-    boot_id="deadbeef00000000" is stale. stale=True returns it; stale=False does not.
+    boot_id="deadbeef00000000" is stale. stale=True returns it but not the live
+    lock; stale=False returns both (no staleness filter applied).
+
+    WR-01 fix: also acquires a live lock so the stale=False assertion is not
+    vacuous — it must return BOTH entries, proving the filter discriminates.
     """
     composite = current_process_composite()
     dead_holder = {
@@ -151,20 +155,26 @@ def test_lock_list_stale_filter(clean_db) -> None:
     }
     clean_db.set(KEY_PREFIX + "deadlock", _encode_holder(dead_holder), ex=60)
 
-    # stale=True should return the stale lock
-    stale_results = lock_list_by_prefix(stale=True)
-    assert len(stale_results) == 1
-    assert stale_results[0]["pid"] == 99999999
+    # Acquire a live lock so the stale filter has something to discriminate against.
+    lock_acquire("livelock")
+    try:
+        # stale=True should return only the stale lock, not the live one.
+        stale_results = lock_list_by_prefix(stale=True)
+        assert len(stale_results) == 1, (
+            f"stale=True must return only the dead holder; got {stale_results!r}"
+        )
+        assert stale_results[0]["pid"] == 99999999
 
-    # stale=False (default) should NOT return the stale lock
-    # (it returns ALL locks, stale or not — stale=False means "no filter on staleness")
-    # But with stale=True it only returns stale ones
-    all_results = lock_list_by_prefix(stale=False)
-    # The dead holder should appear in the unfiltered list
-    assert len(all_results) == 1
-    # With no filter, both stale and live appear
-    pids = [h["pid"] for h in all_results]
-    assert 99999999 in pids
+        # stale=False (default, no filter) should return both live and stale.
+        all_results = lock_list_by_prefix(stale=False)
+        assert len(all_results) == 2, (
+            f"stale=False must return both live and stale entries; got {all_results!r}"
+        )
+        pids = [h["pid"] for h in all_results]
+        assert 99999999 in pids, "Dead holder must appear in unfiltered results"
+        assert os.getpid() in pids, "Live holder (current process) must appear in unfiltered results"
+    finally:
+        lock_release("livelock")
 
 
 # ---------------------------------------------------------------------------
