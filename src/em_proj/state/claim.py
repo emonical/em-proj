@@ -469,6 +469,11 @@ def claim_list_by_prefix(
         if active or stale:
             _ttl = client.ttl(key)
 
+            # key-not-found sentinel (-2): key expired between HGETALL and TTL.
+            # Skip this entry entirely — it no longer exists in Redis.
+            if _ttl == -2:
+                continue
+
         # Filter: active — only keys with TTL > 0 (live expiry set)
         if active and _ttl <= 0:
             continue

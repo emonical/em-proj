@@ -270,3 +270,67 @@ def test_claim_list_scoped_to_project(clean_db) -> None:
         assert len(other_project_entries) == 0
     finally:
         client.delete(other_project_key)
+
+
+# ---------------------------------------------------------------------------
+# Test 8 — TTL expiry race: -2 sentinel skipped without crash (CR-01)
+# ---------------------------------------------------------------------------
+
+
+def test_claim_list_ttl_expiry_race(clean_db, monkeypatch) -> None:
+    """A key that expires between HGETALL and TTL (ttl returns -2) is skipped cleanly.
+
+    Simulates the HGETALL→TTL expiry race by monkeypatching client.ttl to return
+    -2 for the specific key being tested.  The -2 sentinel means "key does not
+    exist" (expired after HGETALL succeeded).
+
+    Without the guard, stale=True would include the ghost entry (incorrect).
+    With the guard, the entry is skipped — no crash, no ghost result.
+
+    CR-01 regression guard.
+    """
+    import unittest.mock as mock
+
+    project_hash = resolve_project_hash()
+
+    # Write a claim key directly so HGETALL succeeds.
+    test_key = KEY_PREFIX + project_hash + ":expiry-race-area"
+    now = time.time()
+    client = redis_module.Redis(host="127.0.0.1", port=6379, db=15, decode_responses=True)
+    client.hset(test_key, mapping={
+        "session_id": "expiry-race-session",
+        "project_hash": project_hash,
+        "reason": "expiry race test",
+        "claimed_at": str(now - 10),
+        "expires_at": str(now + 1800),
+    })
+    client.expire(test_key, 1800)
+
+    # Monkeypatch get_client() to return a wrapper whose ttl() returns -2 for our key.
+    real_client = redis_module.Redis(host="127.0.0.1", port=6379, db=15, decode_responses=True)
+
+    original_ttl = real_client.ttl
+
+    def _patched_ttl(k):
+        if k == test_key:
+            return -2  # simulate: key expired between HGETALL and TTL
+        return original_ttl(k)
+
+    import sys
+    claim_module = sys.modules["em_proj.state.claim"]
+    with mock.patch.object(real_client, "ttl", side_effect=_patched_ttl):
+        with mock.patch.object(claim_module, "get_client", return_value=real_client):
+            # active=True: key with ttl=-2 should be skipped (not crash)
+            result_active = claim_list_by_prefix(active=True)
+            # stale=True: key with ttl=-2 should also be skipped (not included as ghost)
+            result_stale = claim_list_by_prefix(stale=True)
+
+    assert result_active == [], (
+        f"CR-01: expired key (ttl=-2) must be skipped for active=True; got {result_active!r}"
+    )
+    assert result_stale == [], (
+        f"CR-01: expired key (ttl=-2) must be skipped for stale=True (no ghost entries); "
+        f"got {result_stale!r}"
+    )
+
+    client.delete(test_key)
