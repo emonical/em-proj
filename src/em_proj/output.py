@@ -210,6 +210,7 @@ def emit_error(code: str, message: str, *, json_mode: bool | None = None) -> NoR
 #: value to prevent accidental drift. Any change here requires deliberate security
 #: review of the above rationale.
 _HOLDER_DISCLOSURE_KEYS: tuple[str, ...] = (
+    "name",
     "pid",
     "session_id",
     "project_hash",

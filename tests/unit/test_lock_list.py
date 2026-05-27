@@ -77,7 +77,13 @@ def test_lock_list_returns_holder(clean_db) -> None:
         assert "session_id" in holder
         assert "pid" in holder
         assert "expires_at" in holder
+        assert "name" in holder, (
+            "lock_list_by_prefix must inject 'name' into each holder dict (CR-02 fix)"
+        )
         assert holder["pid"] == os.getpid()
+        assert holder["name"] == "testkey", (
+            f"Expected holder['name'] == 'testkey', got {holder['name']!r}"
+        )
     finally:
         lock_release("testkey")
 

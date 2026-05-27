@@ -71,8 +71,14 @@ def test_claim_list_returns_holder(clean_db) -> None:
         result = claim_list_by_prefix()
         assert len(result) == 1
         holder = result[0]
-        required_keys = {"session_id", "project_hash", "reason", "claimed_at", "expires_at"}
-        assert required_keys == set(holder.keys())
+        required_keys = {"session_id", "project_hash", "reason", "claimed_at", "expires_at", "area"}
+        assert required_keys == set(holder.keys()), (
+            f"Holder keys mismatch. Expected {required_keys}, got {set(holder.keys())}. "
+            "'area' field should be injected by claim_list_by_prefix (CR-02 fix)"
+        )
+        assert holder["area"] == "test-area", (
+            f"Expected holder['area'] == 'test-area', got {holder['area']!r}"
+        )
         assert isinstance(holder["session_id"], str)
         assert isinstance(holder["project_hash"], str)
         assert isinstance(holder["claimed_at"], float)

@@ -455,6 +455,11 @@ def claim_list_by_prefix(
         except (KeyError, ValueError):
             continue
 
+        # Inject the claim area (key suffix after project_hash) so callers
+        # can match on it. The key has the shape KEY_PREFIX + project_hash +
+        # ":" + <area>; strip the scan prefix to get area.
+        holder["area"] = key[len(scan_prefix):]
+
         # Filter: mine — only current session's claims
         if mine and holder["session_id"] != resolve_session_id():
             continue

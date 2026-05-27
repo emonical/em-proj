@@ -288,6 +288,7 @@ def test_holder_disclosure_keys_constant_is_pinned_tuple() -> None:
     boot_id and proc_start_epoch must NOT appear in this tuple.
     """
     assert _HOLDER_DISCLOSURE_KEYS == (
+        "name",
         "pid",
         "session_id",
         "project_hash",

@@ -581,6 +581,10 @@ def lock_list_by_prefix(
             # Malformed holder JSON — skip silently (T-5-01-02 accept)
             continue
 
+        # Inject the lock name (key suffix) so callers can match on it.
+        # The key has the shape KEY_PREFIX + <name>; strip the prefix.
+        holder["name"] = key[len(KEY_PREFIX):]
+
         if mine and holder.get("session_id") != resolve_session_id():
             continue
         if stale and not is_holder_stale(holder):
