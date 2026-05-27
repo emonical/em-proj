@@ -170,3 +170,12 @@ No new threat surface introduced beyond what is documented in the plan's `<threa
 ---
 *Phase: 06-gsd-sdk-workstream-consumer*
 *Completed: 2026-05-27*
+
+## Self-Check: PASSED
+
+- SUMMARY.md exists at `.planning/phases/06-gsd-sdk-workstream-consumer/06-01-SUMMARY.md`
+- workstream.js contains `'em-proj'` (1 match), `held_by_another` (2 matches), `spawnSync` (2 matches)
+- workstream.ts contains `'em-proj'` (1 match), `held_by_another` (2 matches), `spawnSync` (2 matches)
+- `node -e "import(workstream.js)"` exits 0
+- `gsd-sdk query workstream.get --raw` returns valid JSON
+- Planning branch commit: `46a85f1`
