@@ -741,7 +741,10 @@ def lock_hold_run(
     signal.signal(signal.SIGTERM, _sigterm_handler)
 
     # Register atexit handler for normal process exit.
-    atexit.register(_cleanup, name, stop_event, popen)
+    # NOTE: Must use a lambda so `popen` is captured by reference (closure),
+    # not by value at registration time (when popen is still None).  Popen
+    # is assigned on line below; atexit fires after that assignment.
+    atexit.register(lambda: _cleanup(name, stop_event, popen))
 
     try:
         # Step 3: Spawn the subprocess.
