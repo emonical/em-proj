@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 2: CLI Shell + KV Primitive** - Installable `em-proj` CLI with `state get|set|del|list` (incl. `--ttl`), semantic exit codes, and Redis-error UX
 - [ ] **Phase 3: Identity + Advisory Locks** - Session/project identity resolution, stale-detection composite, and short-lived `lock|unlock|lock --hold` primitives
 - [x] **Phase 4: Long-Lived Claims** - `claim|release|check` with TTL, refreshable holder metadata, and anonymous-claim refusal
-- [ ] **Phase 5: `/em-global-state` Skill Surface** - Sub-agent-parseable read view and escape-hatch over the complete state primitive
+- [x] **Phase 5: `/em-global-state` Skill Surface** - Sub-agent-parseable read view and escape-hatch over the complete state primitive
 - [ ] **Phase 6: gsd-sdk Workstream Consumer** - `gsd-sdk workstream.set` shells out through `em-proj state claim`; concurrent-session clobber demonstrated as resolved end-to-end
 
 ## Phase Details
@@ -111,17 +111,17 @@ Plans:
 **Plans:** 5 plans
 Plans:
 **Wave 1** *(parallel — no shared files)*
-- [ ] 05-01-PLAN.md — lock_list_by_prefix pure op in lock.py + unit tests (SKILL-01)
-- [ ] 05-02-PLAN.md — claim_list_by_prefix pure op in claim.py + unit tests (SKILL-01)
+- [x] 05-01-PLAN.md — lock_list_by_prefix pure op in lock.py + unit tests (SKILL-01)
+- [x] 05-02-PLAN.md — claim_list_by_prefix pure op in claim.py + unit tests (SKILL-01)
 
 **Wave 2** *(blocked on Wave 1)*
-- [ ] 05-03-PLAN.md — Wire lock-list + claim-list verbs in state/__init__.py + multi-process tests (SKILL-01, SKILL-03)
+- [x] 05-03-PLAN.md — Wire lock-list + claim-list verbs in state/__init__.py + multi-process tests (SKILL-01, SKILL-03)
 
 **Wave 3** *(blocked on Wave 2)*
-- [ ] 05-04-PLAN.md — ~/.claude/skills/em-global-state/SKILL.md with all 6 verbs + confirmation flow (SKILL-01, SKILL-02, SKILL-03)
+- [x] 05-04-PLAN.md — ~/.claude/skills/em-global-state/SKILL.md with all 6 verbs + confirmation flow (SKILL-01, SKILL-02, SKILL-03)
 
 **Wave 4** *(blocked on Wave 3)*
-- [ ] 05-05-PLAN.md — Structural shape test (test_phase_05_shape.py) + SC#3 write-boundary audit + verify-phase.sh 05 gate (SKILL-01, SKILL-02, SKILL-03)
+- [x] 05-05-PLAN.md — Structural shape test (test_phase_05_shape.py) + SC#3 write-boundary audit + verify-phase.sh 05 gate (SKILL-01, SKILL-02, SKILL-03)
 **UI hint**: no
 
 ### Phase 6: gsd-sdk Workstream Consumer
@@ -146,5 +146,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. CLI Shell + KV Primitive | 0/TBD | Not started | - |
 | 3. Identity + Advisory Locks | 6/6 | Complete | 2026-05-23 |
 | 4. Long-Lived Claims | 4/4 | Complete | 2026-05-24 |
-| 5. `/em-global-state` Skill Surface | 0/5 | Not started | - |
+| 5. `/em-global-state` Skill Surface | 5/5 | Complete | 2026-05-26 |
 | 6. gsd-sdk Workstream Consumer | 0/TBD | Not started | - |
