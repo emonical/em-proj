@@ -16,7 +16,9 @@ import pytest
 
 from em_proj.output import (
     SCHEMA_VERSION,
+    _HOLDER_DISCLOSURE_KEYS,
     emit_error,
+    emit_held_by_another,
     emit_not_found,
     emit_ok,
     resolve_json_mode,
@@ -179,3 +181,120 @@ def test_resolve_json_mode_none_uses_isatty(monkeypatch) -> None:
     """resolve_json_mode(None) with isatty()->False auto-detects non-TTY → JSON."""
     monkeypatch.setattr("sys.stdout.isatty", lambda: False)
     assert resolve_json_mode(None) is True
+
+
+# --------------------------------------------------------------------------
+# emit_held_by_another (D-09 / D-15 / CLI-04 exit code 3)
+# --------------------------------------------------------------------------
+
+
+def test_emit_held_by_another_json_envelope(capsys) -> None:
+    """emit_held_by_another in JSON mode exits 3 and emits the held_by_another envelope.
+
+    D-09: displaced holder learns via held_by_another status.
+    D-05: held_by_another status pre-announced in Phase 2; schema_version stays "1".
+    CLI-04: exit code 3 reserved for held_by_another.
+    """
+    with pytest.raises(SystemExit) as exc_info:
+        emit_held_by_another("held_by_another", "Lock foo held by session abc", json_mode=True)
+    assert exc_info.value.code == 3
+
+    captured = capsys.readouterr()
+    assert captured.out == ""  # errors go to stderr, never stdout
+    parsed = json.loads(captured.err)
+    assert parsed["schema_version"] == "1"
+    assert parsed["status"] == "held_by_another"
+    assert parsed["error"]["code"] == "held_by_another"
+    assert parsed["error"]["message"] == "Lock foo held by session abc"
+    assert "data" not in parsed  # no holder kwarg → no data block
+
+
+def test_emit_held_by_another_plain_mode(capsys) -> None:
+    """emit_held_by_another in plain mode writes 'em-proj: <message>' to stderr, exits 3.
+
+    Mirrors emit_error plain-mode behavior (D-15 symmetry).
+    """
+    with pytest.raises(SystemExit) as exc_info:
+        emit_held_by_another("held_by_another", "lock held", json_mode=False)
+    assert exc_info.value.code == 3
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "em-proj: lock held" in captured.err
+
+
+def test_emit_held_by_another_with_holder_includes_sanitized_subset(capsys) -> None:
+    """JSON mode with holder= emits data.holder containing exactly _HOLDER_DISCLOSURE_KEYS.
+
+    T-3-XX-02: boot_id and proc_start_epoch are EXCLUDED from disclosure (machine-identifier
+    leakage and process-start correlation surface respectively).
+    """
+    all_8_fields = {
+        "pid": 12345,
+        "proc_start_epoch": 1716480000.0,
+        "boot_id": "abcdef1234567890",
+        "session_id": "test-session-abc",
+        "project_hash": "-Users-test-project",
+        "reason": "holding the fort",
+        "acquired_at": 1716480010.5,
+        "expires_at": 1716480070.5,
+    }
+
+    with pytest.raises(SystemExit) as exc_info:
+        emit_held_by_another(
+            "held_by_another",
+            "lock is held",
+            holder=all_8_fields,
+            json_mode=True,
+        )
+    assert exc_info.value.code == 3
+
+    parsed = json.loads(capsys.readouterr().err)
+    assert "data" in parsed
+    holder_subset = parsed["data"]["holder"]
+
+    # Exactly these keys — T-3-XX-02 mitigation
+    assert set(holder_subset.keys()) == {
+        "pid", "session_id", "project_hash", "acquired_at", "expires_at", "reason"
+    }
+    # Explicit exclusion assertions — boot_id leaks machine identity
+    assert "boot_id" not in holder_subset
+    # proc_start_epoch enables correlation/fingerprinting of process start times
+    assert "proc_start_epoch" not in holder_subset
+
+    # Values are passed through correctly
+    assert holder_subset["pid"] == 12345
+    assert holder_subset["session_id"] == "test-session-abc"
+    assert holder_subset["reason"] == "holding the fort"
+
+
+def test_emit_held_by_another_schema_version(capsys) -> None:
+    """held_by_another envelope uses schema_version '1' (D-05: additive, no bump).
+
+    Phase 2 D-05 pre-announced this status value; adding it is non-breaking.
+    """
+    with pytest.raises(SystemExit):
+        emit_held_by_another("held_by_another", "held", json_mode=True)
+
+    parsed = json.loads(capsys.readouterr().err)
+    assert parsed["schema_version"] == "1"
+
+
+def test_holder_disclosure_keys_constant_is_pinned_tuple() -> None:
+    """_HOLDER_DISCLOSURE_KEYS is the exact pinned tuple — structural pin against drift.
+
+    T-3-XX-02: the tuple is the single source of truth for holder disclosure.
+    Changing it here requires understanding the security rationale above.
+    boot_id and proc_start_epoch must NOT appear in this tuple.
+    """
+    assert _HOLDER_DISCLOSURE_KEYS == (
+        "name",
+        "pid",
+        "session_id",
+        "project_hash",
+        "acquired_at",
+        "expires_at",
+        "reason",
+    )
+    assert "boot_id" not in _HOLDER_DISCLOSURE_KEYS
+    assert "proc_start_epoch" not in _HOLDER_DISCLOSURE_KEYS

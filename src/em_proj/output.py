@@ -191,3 +191,76 @@ def emit_error(code: str, message: str, *, json_mode: bool | None = None) -> NoR
     else:
         print(f"em-proj: error: {message}", file=sys.stderr)
     raise SystemExit(1)
+
+
+#: Pinned tuple of holder-dict keys exposed in the ``held_by_another`` envelope's
+#: ``data.holder`` subset (T-3-XX-02 / T-3-03-02 mitigations).
+#:
+#: INCLUDED: pid, session_id, project_hash, acquired_at, expires_at, reason.
+#: These give the caller enough context to identify who holds the lock and when.
+#:
+#: EXCLUDED — reason and security:
+#:   boot_id:          16-hex machine-identifier derived from boot time; including
+#:                     it leaks a stable cross-session machine fingerprint (T-3-XX-02).
+#:   proc_start_epoch: process creation epoch; disclosing it enables correlation of
+#:                     process start times across different lock names, revealing
+#:                     process-lifetime patterns (T-3-XX-02 correlation surface).
+#:
+#: This constant is the SINGLE source of truth. Tests import and assert it by
+#: value to prevent accidental drift. Any change here requires deliberate security
+#: review of the above rationale.
+_HOLDER_DISCLOSURE_KEYS: tuple[str, ...] = (
+    "name",
+    "pid",
+    "session_id",
+    "project_hash",
+    "acquired_at",
+    "expires_at",
+    "reason",
+)
+
+
+def emit_held_by_another(
+    code: str,
+    message: str,
+    *,
+    holder: dict | None = None,
+    json_mode: bool | None = None,
+) -> NoReturn:
+    """Emit a held_by_another result and exit 3.
+
+    Symmetric with ``emit_error`` but uses the ``held_by_another`` status value
+    (D-09 displaced-holder-learns principle; D-05 status pre-announced in Phase 2)
+    and exits with CLI-04 exit code 3 ("held by another" — first user).
+
+    JSON mode: writes ``{"schema_version":"1","status":"held_by_another",
+    "error":{"code":code,"message":message}}`` to stderr. If ``holder`` is not
+    None, adds ``"data":{"holder":<sanitized subset>}`` — the subset is built
+    by picking exactly the keys in ``_HOLDER_DISCLOSURE_KEYS`` from ``holder``
+    (missing keys silently skipped). See ``_HOLDER_DISCLOSURE_KEYS`` for the
+    security rationale on which keys are included and which are excluded.
+
+    Plain mode: writes ``em-proj: <message>`` to stderr (mirrors ``emit_error``
+    plain-mode shape but without the ``error: `` prefix, since the caller
+    typically composes a full human message already).
+
+    Always raises ``SystemExit(3)`` — CLI-04 exit code 3.
+
+    Note: This function does NOT inject env values, file paths, or Redis host
+    info into the message (T-3-XX-02 mitigation). The caller is responsible for
+    constructing a clean, leak-free ``message`` string.
+    """
+    if resolve_json_mode(json_mode):
+        envelope: dict[str, Any] = {
+            "schema_version": SCHEMA_VERSION,
+            "status": "held_by_another",
+            "error": {"code": code, "message": message},
+        }
+        if holder is not None:
+            envelope["data"] = {
+                "holder": {k: holder[k] for k in _HOLDER_DISCLOSURE_KEYS if k in holder}
+            }
+        sys.stderr.write(_dump(envelope) + "\n")
+    else:
+        print(f"em-proj: {message}", file=sys.stderr)
+    raise SystemExit(3)
