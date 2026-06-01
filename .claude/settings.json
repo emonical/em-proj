@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(scripts/test.sh help)",
+      "Bash(scripts/test.sh unit)",
+      "Bash(scripts/test.sh unit *)",
+      "Bash(scripts/test.sh multiprocess)",
+      "Bash(scripts/test.sh multiprocess *)",
+      "Bash(scripts/test.sh harness)",
+      "Bash(scripts/test.sh harness *)",
+      "Bash(scripts/test.sh structural)",
+      "Bash(scripts/test.sh structural *)",
+      "Bash(scripts/test.sh all)",
+      "Bash(scripts/test.sh all *)",
+      "Bash(scripts/test.sh conftest-check)",
+      "Bash(scripts/test.sh conftest-check *)",
+      "Bash(scripts/test.sh collect)",
+      "Bash(scripts/test.sh collect *)",
+      "Bash(scripts/test.sh --tail * *)",
+      "Bash(scripts/git-ro.sh *)",
+      "Bash(scripts/verify-phase.sh *)",
+      "Bash(scripts/verify-redis-config.sh)",
+      "Bash(.venv/bin/python em-proj *)",
+      "Bash(.venv/bin/em-proj *)",
+      "Skill(gsd-execute-phase)",
+      "Skill(gsd-code-review)"
+    ]
+  }
+}
