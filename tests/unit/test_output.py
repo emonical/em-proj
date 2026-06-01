@@ -286,12 +286,20 @@ def test_holder_disclosure_keys_constant_is_pinned_tuple() -> None:
     T-3-XX-02: the tuple is the single source of truth for holder disclosure.
     Changing it here requires understanding the security rationale above.
     boot_id and proc_start_epoch must NOT appear in this tuple.
+
+    Phase 7 addendum (T-07-13 accepted): upstream_identity, workstream, and area
+    were added to surface the winner's context in reservation conflicts (ROADMAP SC#2).
+    Lock/claim holder dicts silently skip these keys (``if k in holder`` guard in
+    emit_held_by_another), so lock/claim disclosure behavior is UNCHANGED.
     """
     assert _HOLDER_DISCLOSURE_KEYS == (
         "name",
         "pid",
         "session_id",
         "project_hash",
+        "upstream_identity",  # Phase 7 reserve: upstream repo identity
+        "workstream",         # Phase 7 reserve: workstream name (ROADMAP SC#2)
+        "area",               # Phase 7 reserve: reservation area name
         "acquired_at",
         "expires_at",
         "reason",

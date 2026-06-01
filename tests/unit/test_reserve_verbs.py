@@ -142,17 +142,25 @@ def test_reserve_workstream_flag_bypasses_resolution(clean_db, monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_reserve_tty_prompt_path(clean_db, monkeypatch):
-    """When TTY present and no --workstream, the verb prompts and reads from stdin."""
+    """When TTY present and no --workstream, the verb prompts and reads from stdin.
+
+    Uses the _tty_sys_mock() pattern from test_state_lock_verbs.py: monkeypatch
+    em_proj.state.sys with a mock module whose stdin.isatty() returns True and
+    whose stdin.readline() delegates to the real sys.stdin (which CliRunner has
+    wired to the `input=` argument). This is the correct way to simulate a TTY
+    inside CliRunner -- plain monkeypatch of sys.stdin is overwritten by CliRunner.
+    """
+    import em_proj.state as state_mod
+
     monkeypatch.setattr(
         "em_proj.state.resolve_upstream_identity",
         lambda *a, **kw: "github.com:test-org/test-repo",
     )
-    # Monkeypatch both isatty methods to True (dual-isatty gate)
-    monkeypatch.setattr("sys.stdin", _make_fake_stdin("prompted-ws\n", is_tty=True))
-    monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+    monkeypatch.setattr(state_mod, "sys", _tty_sys_mock())
 
     result = runner.invoke(
-        app, ["state", "reserve", "--json", "migrations.prompt"]
+        app, ["state", "reserve", "--json", "migrations.prompt"],
+        input="prompted-ws\n",
     )
     assert result.exit_code == 0, (
         f"Expected exit 0 via TTY prompt; got {result.exit_code}\n"
@@ -167,13 +175,18 @@ def test_reserve_tty_prompt_path(clean_db, monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_reserve_nontty_exits_1_when_workstream_unset(clean_db, monkeypatch):
-    """Non-TTY + no --workstream + no workstream.active claim → exit 1, workstream_unresolved."""
+    """Non-TTY + no --workstream + no workstream.active claim → exit 1, workstream_unresolved.
+
+    Default CliRunner invocation has stdin.isatty() → False (pipe mode), which
+    already exercises the non-TTY exit-1 path without any monkeypatching of
+    sys.stdin. We do NOT pass input= to CliRunner; the verb should bail before
+    any readline() call.
+    """
     monkeypatch.setattr(
         "em_proj.state.resolve_upstream_identity",
         lambda *a, **kw: "github.com:test-org/test-repo",
     )
-    # Force non-TTY via stdin.isatty → False
-    monkeypatch.setattr("sys.stdin", _make_fake_stdin("", is_tty=False))
+    # No sys.stdin monkeypatching needed: CliRunner's default stdin is not a TTY.
 
     result = runner.invoke(
         app, ["state", "reserve", "--json", "migrations.nontty"]
@@ -213,12 +226,14 @@ def test_reserve_phase_6_claim_set_but_name_unknown_still_prompts(clean_db, monk
     # Simulate Phase 6 claiming workstream.active WITHOUT --reason (no name stored)
     claim_take("workstream.active", ttl=1800)  # no reason= arg, mirrors Phase 6's argv
 
-    # Now monkeypatch TTY and invoke reserve WITHOUT --workstream
-    monkeypatch.setattr("sys.stdin", _make_fake_stdin("name-from-prompt\n", is_tty=True))
-    monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+    # Now monkeypatch TTY and invoke reserve WITHOUT --workstream.
+    # Use _tty_sys_mock() + input= so CliRunner's stdin buffer delivers the answer.
+    import em_proj.state as state_mod
+    monkeypatch.setattr(state_mod, "sys", _tty_sys_mock())
 
     result = runner.invoke(
-        app, ["state", "reserve", "--json", "migrations.q_h"]
+        app, ["state", "reserve", "--json", "migrations.q_h"],
+        input="name-from-prompt\n",
     )
     assert result.exit_code == 0, (
         f"Expected exit 0 (name from prompt); got {result.exit_code}\n"
@@ -239,15 +254,17 @@ def test_reserve_phase_6_claim_set_but_name_unknown_still_prompts(clean_db, monk
 
 def test_reserve_empty_tty_input_exits_1(clean_db, monkeypatch):
     """TTY prompt with empty input → exit 1, 'empty workstream name'."""
+    import em_proj.state as state_mod
+
     monkeypatch.setattr(
         "em_proj.state.resolve_upstream_identity",
         lambda *a, **kw: "github.com:test-org/test-repo",
     )
-    monkeypatch.setattr("sys.stdin", _make_fake_stdin("\n", is_tty=True))
-    monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+    monkeypatch.setattr(state_mod, "sys", _tty_sys_mock())
 
     result = runner.invoke(
-        app, ["state", "reserve", "--json", "migrations.empty_ws"]
+        app, ["state", "reserve", "--json", "migrations.empty_ws"],
+        input="\n",
     )
     assert result.exit_code == 1, f"Expected exit 1; got {result.exit_code}"
     output_text = result.output
@@ -455,7 +472,12 @@ def test_check_with_upstream_routes_to_reserve_namespace(clean_db, monkeypatch):
 # ---------------------------------------------------------------------------
 
 class _FakeStdin:
-    """Minimal fake stdin that controls isatty() return value and readline() response."""
+    """Minimal fake stdin that controls isatty() return value and readline() response.
+
+    Used only for the non-TTY exit test (test_reserve_nontty_exits_1_when_workstream_unset)
+    where we monkeypatch sys.stdin to force isatty() → False. The TTY-prompt tests use
+    _tty_sys_mock() instead because CliRunner overwrites sys.stdin during invoke.
+    """
 
     def __init__(self, response: str, *, is_tty: bool):
         self._response = response
@@ -472,5 +494,42 @@ class _FakeStdin:
 
 
 def _make_fake_stdin(response: str, *, is_tty: bool) -> _FakeStdin:
-    """Return a fake stdin object for monkeypatching sys.stdin in TTY tests."""
+    """Return a fake stdin object for monkeypatching sys.stdin in non-TTY tests."""
     return _FakeStdin(response, is_tty=is_tty)
+
+
+def _tty_sys_mock():
+    """Build a mock sys module for use with monkeypatch.setattr(state_mod, 'sys', ...).
+
+    Mirrors the _tty_sys_mock() helper in test_state_lock_verbs.py.
+
+    The challenge: CliRunner replaces sys.stdin and sys.stdout with BytesIO
+    buffers during isolation, but the replacement happens on the real `sys`
+    module — not on our custom module. To bridge this:
+    - stdin.isatty() returns True (simulating a TTY so the prompt path fires)
+    - stdin.readline() delegates dynamically to ``import sys; sys.stdin.readline()``
+      so it reads from CliRunner's input BytesIO (which CliRunner patches on the
+      real sys.stdin during invoke, AFTER our mock is in place).
+    - All other attributes delegate to the real sys module.
+    """
+    import sys as real_sys
+    import types
+
+    class _StdinTtyMock:
+        def isatty(self) -> bool:
+            return True
+
+        def readline(self) -> str:
+            # Always read from the current real sys.stdin — this is the
+            # CliRunner-patched BytesIO when called inside invoke().
+            return real_sys.stdin.readline()
+
+        def __getattr__(self, name: str):
+            return getattr(real_sys.stdin, name)
+
+    mock_sys = types.ModuleType("sys")
+    mock_sys.__dict__.update(real_sys.__dict__)
+    mock_sys.stdin = _StdinTtyMock()
+    # Keep stderr as-is so CliRunner can capture it
+    mock_sys.stderr = real_sys.stderr
+    return mock_sys

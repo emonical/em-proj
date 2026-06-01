@@ -196,8 +196,15 @@ def emit_error(code: str, message: str, *, json_mode: bool | None = None) -> NoR
 #: Pinned tuple of holder-dict keys exposed in the ``held_by_another`` envelope's
 #: ``data.holder`` subset (T-3-XX-02 / T-3-03-02 mitigations).
 #:
-#: INCLUDED: pid, session_id, project_hash, acquired_at, expires_at, reason.
+#: INCLUDED (lock/claim fields): pid, session_id, project_hash, acquired_at, expires_at, reason.
 #: These give the caller enough context to identify who holds the lock and when.
+#:
+#: INCLUDED (Phase 7 reserve fields — additive, non-breaking): upstream_identity, workstream, area.
+#: These are required by ROADMAP Phase 7 SC#2: the loser of a reservation race must learn
+#: "who has it AND in what workstream" so they can coordinate. Lock/claim holder dicts do
+#: NOT contain these keys; the ``if k in holder`` check in emit_held_by_another silently
+#: skips absent keys, so lock/claim behavior is UNCHANGED. T-07-13 (accepted): the loser
+#: seeing the winner's workstream is intentional (the whole point of RESERVE-02 SC#2).
 #:
 #: EXCLUDED — reason and security:
 #:   boot_id:          16-hex machine-identifier derived from boot time; including
@@ -214,6 +221,9 @@ _HOLDER_DISCLOSURE_KEYS: tuple[str, ...] = (
     "pid",
     "session_id",
     "project_hash",
+    "upstream_identity",  # Phase 7 reserve: upstream repo identity (T-07-13 accept)
+    "workstream",         # Phase 7 reserve: workstream name for ROADMAP SC#2
+    "area",               # Phase 7 reserve: reservation area name
     "acquired_at",
     "expires_at",
     "reason",

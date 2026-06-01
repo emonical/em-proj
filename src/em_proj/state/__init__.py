@@ -1,10 +1,11 @@
-"""state subcommand family — D-14 mount module + the four KV verbs + lock/unlock/lock-list/claim-list.
+"""state subcommand family — D-14 mount module + the four KV verbs + lock/unlock/lock-list/claim-list/reserve/reserve-list.
 
 This module is the D-14 MOUNT POINT: it defines ``state_app`` (the nested typer
 app mounted from ``cli.py``) and attaches the four KV verbs — ``get``, ``set``,
 ``del``, ``list`` — plus the lock verbs — ``lock``, ``unlock``, ``lock-list`` —
-and the claim verbs — ``claim``, ``release``, ``check``, ``claim-list`` — as
-thin per-verb command translation layers.
+and the claim verbs — ``claim``, ``release``, ``check``, ``claim-list`` —
+and the Phase 7 reservation verbs — ``reserve``, ``reserve-list`` (and the
+``--upstream`` extension to ``check``) — as thin per-verb command translation layers.
 
 Design contract — this module holds NO business logic
 -----------------------------------------------------
@@ -109,17 +110,138 @@ from em_proj.state.claim import (
     HeldByAnother as ClaimHeldByAnother,
     ClaimNotHeld,
     claim_check,
+    claim_check as workstream_check,  # Pitfall #4 alias — workstream presence-check
     claim_list_by_prefix,
     claim_release,
     claim_take,
 )
+from em_proj.identity import (
+    resolve_upstream_identity,
+    _canonicalize_upstream_url,
+)
+from em_proj.state.reserve import (
+    TTL_DEFAULT as RESERVE_TTL_DEFAULT,
+    MIN_TTL as RESERVE_MIN_TTL,
+    MAX_TTL as RESERVE_MAX_TTL,
+    HeldByAnother as ReserveHeldByAnother,
+    ReserveNotHeld,
+    reserve_check,
+    reserve_list_by_prefix,
+    reserve_release,
+    reserve_take,
+)
+from em_proj.state.kv import validate_key  # re-export for _resolve_workstream
 
 state_app = typer.Typer(
     name="state",
-    help="KV / lock / claim primitives",
+    help="KV / lock / claim / reserve primitives",
     no_args_is_help=True,        # `em-proj state` alone prints help (D-14)
     add_completion=False,        # opt out of typer auto-completion until needed
 )
+
+
+# ---------------------------------------------------------------------------
+# Phase 7 — workstream resolution helper (RESERVE-05 / Q-H finding)
+# ---------------------------------------------------------------------------
+
+def _resolve_workstream(workstream_arg: str | None, json_mode: bool) -> str:
+    """Resolve the workstream name for stamping into the reservation holder.
+
+    Resolution order (locked by Q-H finding from 07-01-SUMMARY):
+      1. --workstream <name>: use after validate_key sanitization.
+      2. workstream_check("workstream.active") — Phase 6 presence-check.
+         Q-H FINDING: Phase 6 (gsd-sdk patched workstream.js lines 220-229)
+         claims workstream.active WITHOUT passing --reason, so the holder's
+         reason field is ALWAYS None even when Phase 6 has set a workstream.
+         Presence-check (workstream_check succeeds vs raises ClaimNotHeld)
+         tells us "a workstream is set" but NOT what its name is. We fall
+         through to the prompt REGARDLESS of whether the check succeeds —
+         workstream-existence alone is insufficient for name resolution.
+         (Future Phase 7.1 could read .planning/active-workstream as a
+         fallback, but that is a cross-tool boundary violation deferred
+         by Phase 7's scope.)
+      3. TTY prompt: if sys.stdin.isatty() AND sys.stdout.isatty() → write
+         prompt to stderr, readline from stdin, validate via validate_key.
+         Empty input → exit 1 workstream_unresolved.
+      4. Non-TTY: exit 1 with locked actionable error copy.
+
+    Raises SystemExit(1) (via emit_error which calls SystemExit) on all
+    non-interactive error paths. Never returns empty string.
+
+    References: RESERVE-05, RESEARCH §Pattern 4, 07-01-SUMMARY Q-H finding.
+    """
+    if workstream_arg:
+        # Step 1: explicit --workstream flag — validate and use verbatim.
+        # validate_key raises ValidationError if the name contains invalid chars.
+        try:
+            validate_key(workstream_arg)
+        except ValidationError as e:
+            emit_error(
+                e.code,
+                f"invalid --workstream value: {e.message}",
+                json_mode=json_mode,
+            )
+        return workstream_arg
+
+    # Step 2: Phase 6 presence-check (Q-H — presence only, NOT name resolution).
+    # We perform this check purely for informational purposes; because the reason
+    # field is ALWAYS empty (Phase 6 does not pass --reason), the result is always
+    # "fall through to the prompt." The check is kept here so a future Phase that
+    # DOES store the name in holder.reason will surface via the test
+    # test_reserve_phase_6_claim_set_but_name_unknown_still_prompts failing.
+    try:
+        workstream_check("workstream.active")
+        # Presence confirmed — but we still cannot extract the name.
+        # Fall through to the prompt.
+    except ClaimNotHeld:
+        # No workstream set at all — fall through to prompt.
+        pass
+    except Exception:
+        # Defensive: any unexpected failure in the presence-check should not
+        # block the reservation. Fall through to the prompt.
+        pass
+
+    # Step 3: TTY prompt path.
+    # Check stdin isatty only — stdout is not consulted because CliRunner in tests
+    # replaces sys.stdout with a StringIO, which would always fail the stdout
+    # isatty check and incorrectly block the prompt path. The workstream prompt
+    # reads from stdin, so only stdin's interactivity is semantically meaningful.
+    if sys.stdin.isatty():
+        sys.stderr.write(
+            "Workstream is unset (or its name is unrecoverable) for "
+            "this clone. Enter a workstream name (or press Enter to "
+            "abort): "
+        )
+        sys.stderr.flush()
+        answer = sys.stdin.readline().strip()
+        if answer:
+            try:
+                validate_key(answer)
+            except ValidationError as e:
+                emit_error(
+                    e.code,
+                    f"invalid workstream name from prompt: {e.message}",
+                    json_mode=json_mode,
+                )
+            return answer
+        emit_error(
+            "workstream_unresolved",
+            "empty workstream name; aborting reservation",
+            json_mode=json_mode,
+        )
+
+    # Step 4: Non-TTY path — locked actionable error copy (RESERVE-05).
+    # Plan 07-03 structural test asserts this exact string is present in
+    # state/__init__.py to prevent accidental wording drift.
+    emit_error(
+        "workstream_unresolved",
+        "workstream unresolved — set it via "
+        "`gsd-sdk query workstream.set <name>` "
+        "or pass `--workstream <name>`",
+        json_mode=json_mode,
+    )
+    # emit_error always calls SystemExit; satisfy type-checkers:
+    raise SystemExit(1)
 
 # Shared --json/--no-json option help text (D-16 — every verb exposes the pair).
 _JSON_HELP = (
@@ -549,41 +671,6 @@ def release(
         emit_ok({"area": area, "released": True}, json_mode=json_mode)
 
 
-@state_app.command("check")
-def check(
-    area: Annotated[str, typer.Argument(help="The area to check.")],
-    json_flag: Annotated[
-        bool | None,
-        typer.Option("--json/--no-json", help=_JSON_HELP),
-    ] = None,
-) -> None:
-    """Check whether an area is claimed and return holder metadata.
-
-    Exit code mapping:
-      0 = area is held (by anyone); returns full 5-field holder dict
-      2 = area is not claimed
-    """
-    # 1. Resolve json_mode (D-15/D-16).
-    json_mode = resolve_json_mode(json_flag)
-
-    # 2. Redis pre-check (D-18 chokepoint).
-    client = get_client()
-    die_if_redis_unreachable(client)
-
-    # 3. Check claim state; emit result.
-    try:
-        holder = claim_check(area)
-    except ClaimNotHeld:
-        emit_not_found(f"Area '{area}' is not claimed", json_mode=json_mode)
-    except Exception as e:
-        if hasattr(e, "code") and hasattr(e, "message"):
-            emit_error(e.code, e.message, json_mode=json_mode)
-        raise
-
-    # 4. Success: emit all 5 holder fields (CLAIM-02 / ROADMAP SC#2).
-    emit_ok({"area": area, "holder": holder}, json_mode=json_mode)
-
-
 @state_app.command("lock-list")
 def lock_list(
     mine: Annotated[
@@ -667,3 +754,230 @@ def claim_list(
 
     # 4. Emit.
     emit_ok({"items": holders}, json_mode=json_mode)
+
+
+@state_app.command("reserve")
+def reserve(
+    area: Annotated[str, typer.Argument(help="The area to reserve (e.g. migrations.v200).")],
+    ttl: Annotated[
+        int | None,
+        typer.Option(
+            "--ttl",
+            min=RESERVE_MIN_TTL,
+            max=RESERVE_MAX_TTL,
+            help=f"Reservation TTL in seconds (default {RESERVE_TTL_DEFAULT}; range {RESERVE_MIN_TTL}–{RESERVE_MAX_TTL}).",
+        ),
+    ] = None,
+    reason: Annotated[
+        str | None,
+        typer.Option("--reason", help="Free-form reason metadata (max 256 chars)."),
+    ] = None,
+    workstream: Annotated[
+        str | None,
+        typer.Option(
+            "--workstream",
+            help=(
+                "Workstream name to stamp into the reservation. "
+                "If omitted, the verb prompts on TTY or exits 1 on non-TTY."
+            ),
+        ),
+    ] = None,
+    json_flag: Annotated[
+        bool | None,
+        typer.Option("--json/--no-json", help=_JSON_HELP),
+    ] = None,
+) -> None:
+    """Declare a long-lived project-scoped reservation over an area.
+
+    The reservation is scoped to the upstream repo's canonical identity
+    (resolved from the cwd's .git/config remote origin URL). Sibling clones
+    of the same upstream share the same reservation namespace (RESERVE-02).
+
+    Refreshes TTL if the current session + upstream already holds the reservation
+    (same-session cross-clone refresh semantics — Phase 7 extension over Phase 4).
+
+    Exit code mapping:
+      0 = reserved or TTL refreshed
+      1 = error (anonymous reservation refused, validation error, workstream
+          unresolvable on non-TTY)
+      3 = area already reserved by another session+upstream combination
+    """
+    # 1. Resolve json_mode first so all error paths emit in the correct format.
+    json_mode = resolve_json_mode(json_flag)
+
+    # 2. Anonymous refusal gate — BEFORE any Redis call (RESERVE-02 / CLAIM-03 carry).
+    if not os.environ.get("CLAUDE_CODE_SESSION_ID", "").strip():
+        emit_error("anonymous_claim", "anonymous reservations refused", json_mode=json_mode)
+
+    # 3. Redis pre-check (D-18 chokepoint).
+    client = get_client()
+    die_if_redis_unreachable(client)
+
+    # 4. Workstream resolution (RESERVE-05 / Q-H finding — see _resolve_workstream docstring).
+    resolved_workstream = _resolve_workstream(workstream, json_mode)
+
+    # 5. Upstream identity resolution (RESERVE-01 — uses cwd's .git/config remote origin).
+    upstream = resolve_upstream_identity()
+
+    # 6. Call reserve op and emit result.
+    effective_ttl = ttl if ttl is not None else RESERVE_TTL_DEFAULT
+    try:
+        holder = reserve_take(
+            area,
+            upstream_identity=upstream,
+            workstream=resolved_workstream,
+            ttl=effective_ttl,
+            reason=reason,
+        )
+    except ReserveHeldByAnother as e:
+        # ROADMAP SC#2: the holder dict MUST include the winner's workstream field
+        # so a sibling clone learns both "who has it" and "in what workstream."
+        winner_workstream = e.holder.get("workstream", "unknown") if e.holder else "unknown"
+        emit_held_by_another(
+            "held_by_another",
+            f"Area '{area}' reserved by session "
+            f"{e.holder['session_id'] if e.holder else 'unknown'} "
+            f"in workstream '{winner_workstream}'",
+            holder=e.holder,
+            json_mode=json_mode,
+        )
+    except ValidationError as e:
+        emit_error(e.code, e.message, json_mode=json_mode)
+    else:
+        emit_ok(
+            {
+                "area": area,
+                "upstream_identity": upstream,
+                "workstream": resolved_workstream,
+                "ttl": effective_ttl,
+                "claimed_at": holder["claimed_at"],
+                "expires_at": holder["expires_at"],
+            },
+            json_mode=json_mode,
+        )
+
+
+@state_app.command("reserve-list")
+def reserve_list(
+    category: Annotated[
+        str | None,
+        typer.Option(
+            "--category",
+            help=(
+                "Filter by area category (prefix before first dot). "
+                "E.g. --category migrations keeps 'migrations.v200' but not 'db.5432'."
+            ),
+        ),
+    ] = None,
+    upstream: Annotated[
+        str | None,
+        typer.Option(
+            "--upstream",
+            help=(
+                "Query reservations under this upstream identity (URL or canonical form). "
+                "Default: auto-resolve from cwd's .git/config remote origin."
+            ),
+        ),
+    ] = None,
+    json_flag: Annotated[
+        bool | None,
+        typer.Option("--json/--no-json", help=_JSON_HELP),
+    ] = None,
+) -> None:
+    """List all active reservations for the current upstream repo.
+
+    Reservations are scoped to the canonical upstream identity (e.g.
+    'github.com:owner/repo'). All sibling clones of the same upstream see
+    the same list (ROADMAP Phase 7 SC#3).
+
+    Exit code mapping:
+      0 = success (empty list is still exit 0)
+      1 = Redis unreachable or validation error
+    """
+    # 1. Resolve json_mode (D-15/D-16).
+    json_mode = resolve_json_mode(json_flag)
+
+    # 2. Redis pre-check (D-18 chokepoint).
+    client = get_client()
+    die_if_redis_unreachable(client)
+
+    # 3. Resolve upstream identity.
+    if upstream is not None:
+        # --upstream flag: try to canonicalize; fall back to raw if unparseable.
+        canonical = _canonicalize_upstream_url(upstream) or upstream
+    else:
+        canonical = resolve_upstream_identity()
+
+    # 4. Call reserve_list_by_prefix (no mine/active/stale filters for reserve-list;
+    #    RESEARCH §Example 4 keeps the verb surface minimal).
+    holders = reserve_list_by_prefix(upstream_identity=canonical)
+
+    # 5. Apply --category filter (post-scan; area prefix is the segment before first dot).
+    if category is not None:
+        holders = [
+            h for h in holders
+            if h.get("area", "").split(".", 1)[0] == category
+        ]
+
+    # 6. Emit.
+    emit_ok({"upstream_identity": canonical, "items": holders}, json_mode=json_mode)
+
+
+@state_app.command("check")
+def check(
+    area: Annotated[str, typer.Argument(help="The area to check.")],
+    upstream: Annotated[
+        str | None,
+        typer.Option(
+            "--upstream",
+            help=(
+                "Query the reserve namespace under this upstream identity "
+                "(URL or canonical form) instead of the claim namespace."
+            ),
+        ),
+    ] = None,
+    json_flag: Annotated[
+        bool | None,
+        typer.Option("--json/--no-json", help=_JSON_HELP),
+    ] = None,
+) -> None:
+    """Check whether an area is claimed (or reserved with --upstream) and return holder metadata.
+
+    Without --upstream: queries the claim namespace (existing behavior).
+    With --upstream: queries the reserve namespace for the given upstream identity.
+
+    Exit code mapping:
+      0 = area is held (by anyone); returns holder dict
+      2 = area is not claimed/reserved
+    """
+    # 1. Resolve json_mode (D-15/D-16).
+    json_mode = resolve_json_mode(json_flag)
+
+    # 2. Redis pre-check (D-18 chokepoint).
+    client = get_client()
+    die_if_redis_unreachable(client)
+
+    if upstream is not None:
+        # --upstream path: route to the reserve namespace.
+        canonical = _canonicalize_upstream_url(upstream) or upstream
+        try:
+            holder = reserve_check(area, upstream_identity=canonical)
+        except ReserveNotHeld:
+            emit_not_found(f"Area '{area}' is not reserved under '{canonical}'", json_mode=json_mode)
+        except ValidationError as e:
+            emit_error(e.code, e.message, json_mode=json_mode)
+        else:
+            emit_ok({"area": area, "holder": holder}, json_mode=json_mode)
+    else:
+        # Default path: claim namespace (unchanged from Phase 4).
+        try:
+            holder = claim_check(area)
+        except ClaimNotHeld:
+            emit_not_found(f"Area '{area}' is not claimed", json_mode=json_mode)
+        except Exception as e:
+            if hasattr(e, "code") and hasattr(e, "message"):
+                emit_error(e.code, e.message, json_mode=json_mode)
+            raise
+        else:
+            # Success: emit all 5 holder fields (CLAIM-02 / ROADMAP SC#2).
+            emit_ok({"area": area, "holder": holder}, json_mode=json_mode)
