@@ -2,7 +2,7 @@
 
 ## Overview
 
-Milestone v1.0 ships `em-proj` as an installable Python CLI and proves the `state` primitive end-to-end with the active-workstream pointer as the first validating consumer. The path: land the multi-process test harness and Redis infrastructure first (TDD-first per pitfalls research), then the CLI shell with KV operations as the first exercisable surface, then identity + locks, then claims, then the `/em-global-state` skill surface, and finally the `gsd-sdk workstream.set` integration that proves two concurrent sessions no longer clobber each other.
+Milestone v1.0 ships `em-proj` as an installable Python CLI and proves the `state` primitive end-to-end with the active-workstream pointer as the first validating consumer, then extends it (Phase 7) to a project-scoped reservation registry so sibling clones of the same upstream repo can coordinate shared external resources (migration versions, database ports, etc.) without colliding. The path: land the multi-process test harness and Redis infrastructure first (TDD-first per pitfalls research), then the CLI shell with KV operations as the first exercisable surface, then identity + locks, then claims, then the `/em-global-state` skill surface, then the `gsd-sdk workstream.set` integration that proves two concurrent sessions no longer clobber each other, and finally the reservation registry surface for cross-clone coordination.
 
 ## Phases
 
@@ -18,6 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Long-Lived Claims** - `claim|release|check` with TTL, refreshable holder metadata, and anonymous-claim refusal
 - [x] **Phase 5: `/em-global-state` Skill Surface** - Sub-agent-parseable read view and escape-hatch over the complete state primitive
 - [ ] **Phase 6: gsd-sdk Workstream Consumer** - `gsd-sdk workstream.set` shells out through `em-proj state claim`; concurrent-session clobber demonstrated as resolved end-to-end
+- [ ] **Phase 7: Project-Scoped Reservation Registry** - `em-proj state reserve` + `/em-check-state` surface, namespaced by upstream-repo identity so sibling clones share reservations (migrations, db ports, etc.) instead of colliding
 
 ## Phase Details
 
@@ -142,10 +143,23 @@ Plans:
 - [x] 06-03-PLAN.md — tests/structural/test_phase_06_shape.py (Q-D portable resolver + Pattern D xfail-on-reversion) + bash scripts/verify-phase.sh 06 acceptance gate (CONSUMER-01, CONSUMER-02)
 **UI hint**: no
 
+### Phase 7: Project-Scoped Reservation Registry
+**Goal**: Sibling clones of the same upstream repo (e.g., `roleplay-engine`, `roleplay-engine-foundation`, `roleplay-engine-ai-rp`) can declare reservations on shared external resources (migration versions, database ports, anything else) at the upstream-repo identity level — so a reservation made in one clone is visible to (and refused by) the other two — and any session can ask `/em-check-state` from any clone to see "what's reserved against this project?" grouped by category.
+**Depends on**: Phase 4 (claim primitive), Phase 5 (skill surface), Phase 6 (workstream concept)
+**Requirements**: RESERVE-01, RESERVE-02, RESERVE-03, RESERVE-04, RESERVE-05
+**Success Criteria** (what must be TRUE):
+  1. From any of the three sibling clones, `em-proj state reserve migrations.v200 --reason "applying v200"` succeeds, namespaces the claim by a stable `upstream_identity` (derived from `git remote get-url origin`, NOT the per-clone `project_hash`), and stamps `workstream=<clone-derived-name>` into the holder dict automatically (resolved from the clone's current `workstream.active` claim).
+  2. Two sibling clones racing `em-proj state reserve migrations.v200` produce deterministic serialization: one wins, the other exits 3 with the winner's `workstream` field surfaced in the structured error.
+  3. `/em-check-state` invoked from ANY of the three sibling clones (no args needed) returns the same content — all reservations against the shared `upstream_identity`, grouped by category (e.g. `migrations: [v200, v201]`, `db.ports: [5432, 5433]`), with each holder's `workstream` field visible. Verified by a harness fixture spawning three subprocess sessions in distinct clone roots.
+  4. When `workstream.active` is UNSET in the calling clone, `em-proj state reserve` on a TTY prompts the user for a workstream name; on non-TTY (CI, scripts) it exits 1 with a clear "workstream unresolved — set it via `gsd-sdk query workstream.set <name>` or pass `--workstream <name>`" message. No silent heuristic fallback (no auto-derivation from repo-root basename).
+  5. Existing Phase 6 `workstream.active` claim (per-clone, project_hash-namespaced) coexists with reservations (upstream_identity-namespaced) — different Redis key prefixes, no collision. Verified by a structural assertion that the two namespaces are disjoint.
+**Plans**: TBD
+**UI hint**: no
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -154,4 +168,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Identity + Advisory Locks | 6/6 | Complete | 2026-05-23 |
 | 4. Long-Lived Claims | 4/4 | Complete | 2026-05-24 |
 | 5. `/em-global-state` Skill Surface | 5/5 | Complete | 2026-05-26 |
-| 6. gsd-sdk Workstream Consumer | 0/TBD | Not started | - |
+| 6. gsd-sdk Workstream Consumer | 3/3 | Complete | 2026-05-27 |
+| 7. Project-Scoped Reservation Registry | 0/TBD | Not started | - |

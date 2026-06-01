@@ -53,6 +53,14 @@ Requirements for milestone v1.0 — bootstrap `em-proj` + land the `state` primi
 - [ ] **CONSUMER-01**: `gsd-sdk workstream.set` writes through `em-proj state claim` via shell-out (no source extension of gsd-sdk)
 - [ ] **CONSUMER-02**: Two concurrent Claude Code sessions in the same project no longer silently clobber each other's active-workstream pointer (demonstrated end-to-end)
 
+### RESERVE — project-scoped reservation registry (cross-clone coordination)
+
+- [ ] **RESERVE-01**: Reservations namespace by a stable `upstream_identity` derived from `git remote get-url origin` (slug or hash; project-agnostic, shared across sibling clones of the same upstream repo). Distinct from the per-clone `project_hash` used by Phase 4 claims and Phase 6 workstreams.
+- [ ] **RESERVE-02**: At reservation-claim time, the holder dict auto-stamps `workstream` (read from the calling clone's `workstream.active` Phase 6 claim). Holders thus carry `{session_id, project_hash (caller's local), upstream_identity, workstream, reason, claimed_at, expires_at}`.
+- [ ] **RESERVE-03**: `/em-check-state` (no args) auto-resolves `upstream_identity` from current `cwd`'s `git remote get-url origin` and returns ALL reservations against that identity, grouped by category prefix (the part of `<category>.<resource>` before the first dot).
+- [ ] **RESERVE-04**: `/em-check-state --category <name>` filters to one category; `--upstream <url-or-identity>` overrides cwd-based resolution to query reservations against a different upstream from anywhere.
+- [ ] **RESERVE-05**: New verb shape `em-proj state reserve <category>.<resource> [--reason <text>] [--ttl <secs>] [--workstream <name>]` — sugar over `claim` that uses `upstream_identity` instead of `project_hash` and auto-stamps `workstream`. When `workstream.active` is unset AND `--workstream` is not passed: TTY prompts; non-TTY exits 1 with actionable error. No silent heuristic fallback.
+
 ### TEST — multi-process test harness
 
 - [ ] **TEST-01**: A multi-process test harness exists that spawns `fork+exec`'d child processes and races them at the `em-proj` CLI boundary
@@ -125,12 +133,17 @@ Which phases cover which requirements. Updated by the roadmapper.
 | SKILL-03 | Phase 5 | Pending |
 | CONSUMER-01 | Phase 6 | Pending |
 | CONSUMER-02 | Phase 6 | Pending |
+| RESERVE-01 | Phase 7 | Pending |
+| RESERVE-02 | Phase 7 | Pending |
+| RESERVE-03 | Phase 7 | Pending |
+| RESERVE-04 | Phase 7 | Pending |
+| RESERVE-05 | Phase 7 | Pending |
 | TEST-01 | Phase 1 | Pending |
 | TEST-02 | Phase 1 | Pending |
 
 **Coverage:**
-- v1 requirements: 24 total
-- Mapped to phases: 24 ✓
+- v1 requirements: 29 total
+- Mapped to phases: 29 ✓
 - Unmapped: 0
 
 **Per-phase distribution:**
@@ -143,9 +156,10 @@ Which phases cover which requirements. Updated by the roadmapper.
 | Phase 4: Long-Lived Claims | CLAIM-01, CLAIM-02, CLAIM-03 | 3 |
 | Phase 5: `/em-global-state` Skill Surface | SKILL-01, SKILL-02, SKILL-03 | 3 |
 | Phase 6: gsd-sdk Workstream Consumer | CONSUMER-01, CONSUMER-02 | 2 |
-| **Total** | | **24** |
+| Phase 7: Project-Scoped Reservation Registry | RESERVE-01, RESERVE-02, RESERVE-03, RESERVE-04, RESERVE-05 | 5 |
+| **Total** | | **29** |
 
-> Note: previous frontmatter cited "20 total" v1 requirements; the actual count enumerated above and in the table is 24. The 20-figure was a stale draft count from before LOCK and SKILL were expanded into multiple REQ-IDs. Coverage is computed against the 24 enumerated requirements.
+> Note: previous frontmatter cited "20 total" v1 requirements; the actual count enumerated above and in the table is 29 (24 from the original M1 scope + 5 from the Phase 7 M1-extension RESERVE group). Coverage is computed against the 29 enumerated requirements.
 
 ---
 *Requirements defined: 2026-05-17*
