@@ -22,6 +22,13 @@ Stale-detection probe API (Plan 03-02 additions — IDENT-02):
   - ``probe_proc_start_matches(pid, expected_start_epoch) -> bool`` — True on match or AccessDenied
   - ``is_holder_stale(holder: dict) -> bool``  — composite three-probe stale gate (D-10 step 1)
 
+Phase 7 — upstream identity (Plan 07-01 additions — RESERVE-01):
+  - ``resolve_upstream_identity(cwd) -> str``   — canonical ``host:owner/repo`` string or
+                                                  ``resolve_project_hash()`` fallback
+  - ``_canonicalize_upstream_url(raw) -> str | None`` — module-private; maps any git URL shape
+                                                         to canonical form; returns None for
+                                                         unparseable inputs
+
 Conservative-probe principle (T-3-02-01 / T-3-XX-06):
   When a probe cannot determine liveness (``psutil.AccessDenied``), we return the
   "live" signal rather than the "stale" signal.  False-negatives (missing a stale
@@ -57,6 +64,8 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
+import subprocess
 
 
 import psutil
@@ -304,3 +313,131 @@ def is_holder_stale(holder: dict) -> bool:  # type: ignore[type-arg]
 
     # All three probes say live.
     return False
+
+
+# ---------------------------------------------------------------------------
+# Phase 7 — upstream identity resolver (Plan 07-01 — RESERVE-01)
+# ---------------------------------------------------------------------------
+
+#: SCP-form regex: git@host:owner/repo[.git]
+#: Matches: git@github.com:owner/repo.git, git@host:owner/sub/repo
+#: Does NOT match host:port/path (the ":(?!\d)" lookahead rejects digit-after-colon).
+#: Source: RESEARCH §Pattern 1 lines 271-285 — do not modify without re-running
+#: the 13-row test vector in tests/unit/test_upstream_identity.py.
+_SCP_FORM = re.compile(
+    r"^(?:[a-zA-Z0-9_.\-]+@)?"          # optional user@
+    r"(?P<host>[a-zA-Z0-9.\-]+)"        # host
+    r":(?!\d)"                           # ":" but NOT followed by a digit (port)
+    r"(?P<path>[a-zA-Z0-9._\-/]+?)"     # owner/repo
+    r"(?:\.git)?/?$"                     # optional .git, optional trailing slash
+)
+
+#: URL-form regex: https/ssh/git protocol URLs with optional port, optional user-info.
+#: Matches: https://github.com/o/r.git, ssh://git@host:22/o/r, http://host/o/r,
+#:          https://user:token@host/o/r  (user-info with colon for token auth).
+#: Source: RESEARCH §Pattern 1 lines 278-285; user-info charset extended to include
+#: colon to handle https://user:token@host/... (Rule 1 fix — the RESEARCH regex
+#: omitted the colon from the user-info group).
+_URL_FORM = re.compile(
+    r"^(?:https?|ssh|git)://"            # protocol
+    r"(?:[a-zA-Z0-9_.\-:]+@)?"          # optional user@ or user:password@ (colon allowed)
+    r"(?P<host>[a-zA-Z0-9.\-]+)"        # host
+    r"(?::\d+)?"                         # optional :port
+    r"/(?P<path>[a-zA-Z0-9._\-/]+?)"    # /owner/repo
+    r"(?:\.git)?/?$"                     # optional .git, optional trailing slash
+)
+
+
+def _canonicalize_upstream_url(raw: str) -> str | None:
+    """Return the canonical ``host:owner/repo`` form, or None if unparseable.
+
+    Canonical form properties (RESEARCH §Pattern 1):
+      - host is lowercased
+      - owner/repo case is PRESERVED (GitHub is case-insensitive for repo lookup
+        but case-PRESERVING for display; preserving keeps the Redis key
+        human-readable as the user wrote it)
+      - .git suffix is stripped
+      - trailing slash is stripped
+      - port (if explicit) is dropped — same repo regardless of port
+      - user-info (git@) is dropped
+      - protocol is dropped — same repo across ssh/https
+
+    Returns None for empty input or input that matches neither _URL_FORM nor _SCP_FORM.
+    The ``resolve_upstream_identity`` caller treats None as a signal to fall back to
+    ``resolve_project_hash()`` (per-clone scope rather than upstream scope).
+    """
+    raw = raw.strip()
+    if not raw:
+        return None
+
+    # Try URL form first (has explicit protocol); then SCP form.
+    m = _URL_FORM.match(raw)
+    if not m:
+        m = _SCP_FORM.match(raw)
+    if not m:
+        return None
+
+    host = m.group("host").lower()
+    path = m.group("path").strip("/")  # belt-and-braces in case the regex leaves a slash
+    return f"{host}:{path}"
+
+
+def resolve_upstream_identity(cwd: str | None = None) -> str:
+    """Return the canonical upstream-repo identity for the calling clone.
+
+    Strategy (RESEARCH §Pattern 2):
+      1. Run ``git -C <cwd> remote get-url origin`` via ``subprocess.run`` with
+         ``shell=False`` — no PATH-controlled shell-out; argv list prevents injection.
+      2. If git exits 0 AND output is non-empty AND canonicalization succeeds:
+         return the canonical ``host:owner/repo`` string.
+      3. Otherwise fall back to ``resolve_project_hash()`` (per-clone scope).
+
+    Fallback triggers:
+      - ``FileNotFoundError`` — git binary not on PATH
+      - ``subprocess.TimeoutExpired`` — git hung (credential prompt, network drama)
+      - ``result.returncode != 0`` — not a git repo, no remote named origin
+      - ``result.stdout.strip()`` is empty (Pitfall #2 — ``git remote get-url origin``
+        on a repo with an empty URL returns 0 with empty stdout on some git versions)
+      - ``_canonicalize_upstream_url(raw)`` returns None — unparseable URL
+
+    Design choice — subprocess is acceptable here (T-3-01-03 extension):
+      ``resolve_project_hash`` rejected shell-out because it had no functional need
+      (cwd is always available) and introduced a PATH-controlled attack surface.
+      Phase 7's upstream resolver HAS a functional need — the upstream identity CANNOT
+      be derived from the cwd alone. Mitigations applied:
+        - argv list (not a shell string) → no shell metacharacter injection possible
+        - ``shell=False`` (explicit, belt-and-braces)
+        - ``timeout=5.0`` → no hang on slow git (T-07-09)
+        - ``check=False`` → non-zero exit is handled, not raised
+
+    cwd parameter:
+      If supplied, it is passed directly to ``git -C <cwd>``. If None, ``os.getcwd()``
+      is used. The caller (verb layer, Plan 07-02) may pass an explicit cwd to support
+      multi-clone test scenarios where the process cwd differs from the clone under test.
+    """
+    target_cwd = cwd if cwd is not None else os.getcwd()
+    try:
+        result = subprocess.run(
+            ["git", "-C", target_cwd, "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+            timeout=5.0,
+            check=False,
+            shell=False,  # explicit belt-and-braces; shell=False is the default
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return resolve_project_hash()
+
+    if result.returncode != 0:
+        return resolve_project_hash()
+
+    raw = result.stdout.strip()
+    if not raw:
+        # Pitfall #2: git exits 0 but stdout is empty (empty URL in .git/config)
+        return resolve_project_hash()
+
+    canonical = _canonicalize_upstream_url(raw)
+    if canonical is None:
+        return resolve_project_hash()
+
+    return canonical
