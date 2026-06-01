@@ -1,5 +1,6 @@
 .planning/
-.claude/
+.claude/*
+!.claude/settings.json
 .DS_Store
 .venv/
 __pycache__/
