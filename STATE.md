@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: "Milestone v1.0 shipped -- PR #1 (gsd/v1.0-milestone -> main, 50 commits, awaiting merge)"
+status: executing
 stopped_at: Phase 3 planned (6 plans across 6 waves)
-last_updated: "2026-05-27T18:32:40.831Z"
-last_activity: "2026-05-27 -- Phase 6 shipped (PR #1)"
+last_updated: "2026-06-01T04:25:13.615Z"
+last_activity: 2026-06-01 -- Phase 07 execution started
 progress:
-  total_phases: 6
+  total_phases: 7
   completed_phases: 6
-  total_plans: 27
+  total_plans: 30
   completed_plans: 27
-  percent: 100
+  percent: 90
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-16)
 
 **Core value:** A sub-agent, skill, or session can ask the substrate "is it safe to edit X, or is someone else working there?" and get a structured, parseable answer grounded in current cross-session reality.
-**Current focus:** Phase 06 — gsd-sdk-workstream-consumer
+**Current focus:** Phase 07 — project-scoped-reservation-registry
 
 ## Current Position
 
-Phase: 06 (gsd-sdk-workstream-consumer) — EXECUTING
+Phase: 07 (project-scoped-reservation-registry) — EXECUTING
 Plan: 1 of 3
-Status: Milestone v1.0 shipped -- PR #1 (gsd/v1.0-milestone -> main, 50 commits, awaiting merge)
-Last activity: 2026-05-27 -- Phase 6 shipped (PR #1)
+Status: Executing Phase 07
+Last activity: 2026-06-01 -- Phase 07 execution started
 
 Progress: [██░░░░] 33%
 

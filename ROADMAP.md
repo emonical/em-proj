@@ -153,7 +153,16 @@ Plans:
   3. `/em-check-state` invoked from ANY of the three sibling clones (no args needed) returns the same content — all reservations against the shared `upstream_identity`, grouped by category (e.g. `migrations: [v200, v201]`, `db.ports: [5432, 5433]`), with each holder's `workstream` field visible. Verified by a harness fixture spawning three subprocess sessions in distinct clone roots.
   4. When `workstream.active` is UNSET in the calling clone, `em-proj state reserve` on a TTY prompts the user for a workstream name; on non-TTY (CI, scripts) it exits 1 with a clear "workstream unresolved — set it via `gsd-sdk query workstream.set <name>` or pass `--workstream <name>`" message. No silent heuristic fallback (no auto-derivation from repo-root basename).
   5. Existing Phase 6 `workstream.active` claim (per-clone, project_hash-namespaced) coexists with reservations (upstream_identity-namespaced) — different Redis key prefixes, no collision. Verified by a structural assertion that the two namespaces are disjoint.
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+**Wave 1**
+- [x] 07-01-PLAN.md — identity.py upstream resolver + canonicalizer + reserve.py pure-ops module + unit tests (RESERVE-01, RESERVE-02)
+
+**Wave 2** *(blocked on Wave 1)*
+- [x] 07-02-PLAN.md — reserve/reserve-list verb wiring + check --upstream + multi-clone race tests + three-clones SC#3 demo (RESERVE-02, RESERVE-03, RESERVE-04, RESERVE-05)
+
+**Wave 3** *(blocked on Wave 2)*
+- [x] 07-03-PLAN.md — Structural shape test + ~/.claude/skills/em-global-state/SKILL.md reservations verb + verify-phase.sh 07 acceptance gate (RESERVE-03, RESERVE-04)
 **UI hint**: no
 
 ## Progress
@@ -169,4 +178,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 4. Long-Lived Claims | 4/4 | Complete | 2026-05-24 |
 | 5. `/em-global-state` Skill Surface | 5/5 | Complete | 2026-05-26 |
 | 6. gsd-sdk Workstream Consumer | 3/3 | Complete | 2026-05-27 |
-| 7. Project-Scoped Reservation Registry | 0/TBD | Not started | - |
+| 7. Project-Scoped Reservation Registry | 0/3 | Not started | - |
