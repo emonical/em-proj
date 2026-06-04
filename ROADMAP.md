@@ -12,13 +12,13 @@ Milestone v1.0 ships `em-proj` as an installable Python CLI and proves the `stat
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Test Harness + Redis Foundation** - Multi-process race harness and persistent Redis backend, the substrate every subsequent phase races against
-- [ ] **Phase 2: CLI Shell + KV Primitive** - Installable `em-proj` CLI with `state get|set|del|list` (incl. `--ttl`), semantic exit codes, and Redis-error UX
-- [ ] **Phase 3: Identity + Advisory Locks** - Session/project identity resolution, stale-detection composite, and short-lived `lock|unlock|lock --hold` primitives
+- [x] **Phase 1: Test Harness + Redis Foundation** - Multi-process race harness and persistent Redis backend, the substrate every subsequent phase races against
+- [x] **Phase 2: CLI Shell + KV Primitive** - Installable `em-proj` CLI with `state get|set|del|list` (incl. `--ttl`), semantic exit codes, and Redis-error UX
+- [x] **Phase 3: Identity + Advisory Locks** - Session/project identity resolution, stale-detection composite, and short-lived `lock|unlock|lock --hold` primitives
 - [x] **Phase 4: Long-Lived Claims** - `claim|release|check` with TTL, refreshable holder metadata, and anonymous-claim refusal
 - [x] **Phase 5: `/em-global-state` Skill Surface** - Sub-agent-parseable read view and escape-hatch over the complete state primitive
-- [ ] **Phase 6: gsd-sdk Workstream Consumer** - `gsd-sdk workstream.set` shells out through `em-proj state claim`; concurrent-session clobber demonstrated as resolved end-to-end
-- [ ] **Phase 7: Project-Scoped Reservation Registry** - `em-proj state reserve` + `/em-check-state` surface, namespaced by upstream-repo identity so sibling clones share reservations (migrations, db ports, etc.) instead of colliding
+- [x] **Phase 6: gsd-sdk Workstream Consumer** - `gsd-sdk workstream.set` shells out through `em-proj state claim`; concurrent-session clobber demonstrated as resolved end-to-end
+- [x] **Phase 7: Project-Scoped Reservation Registry** - `em-proj state reserve` + `/em-check-state` surface, namespaced by upstream-repo identity so sibling clones share reservations (migrations, db ports, etc.) instead of colliding
 
 ## Phase Details
 
@@ -172,10 +172,10 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Test Harness + Redis Foundation | 0/TBD | Not started | - |
-| 2. CLI Shell + KV Primitive | 0/TBD | Not started | - |
+| 1. Test Harness + Redis Foundation | Complete | Complete | 2026-05-23 |
+| 2. CLI Shell + KV Primitive | 5/5 | Complete | 2026-05-23 |
 | 3. Identity + Advisory Locks | 6/6 | Complete | 2026-05-23 |
 | 4. Long-Lived Claims | 4/4 | Complete | 2026-05-24 |
 | 5. `/em-global-state` Skill Surface | 5/5 | Complete | 2026-05-26 |
 | 6. gsd-sdk Workstream Consumer | 3/3 | Complete | 2026-05-27 |
-| 7. Project-Scoped Reservation Registry | 0/3 | Not started | - |
+| 7. Project-Scoped Reservation Registry | 3/3 | Complete | 2026-06-04 |
