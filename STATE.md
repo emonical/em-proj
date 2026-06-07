@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: em-proj state primitive
-status: milestone-complete
-stopped_at: v1.0 shipped, archived, and tagged; awaiting next milestone (/gsd-new-milestone)
+milestone: v1.1
+milestone_name: Session Registry + Inter-Session Messaging
+status: planning
+stopped_at: v1.1 scoping — defining requirements
 last_updated: "2026-06-07T00:00:00Z"
-last_activity: 2026-06-07 -- v1.0 milestone closed (archived + tagged v1.0); main reconciled to origin
+last_activity: 2026-06-07 -- v1.1 milestone started (session registry + messaging)
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 30
-  completed_plans: 30
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,28 +21,32 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-07)
 
 **Core value:** A sub-agent, skill, or session can ask the substrate "is it safe to edit X, or is someone else working there?" and get a structured, parseable answer grounded in current cross-session reality.
-**Current focus:** v1.0 shipped — `em-proj state` primitive delivered end-to-end (KV → locks → claims → skill surface → workstream consumer → reservation registry). Milestone archived and tagged. Planning the next milestone.
+**Current focus:** Milestone v1.1 — extend em-proj from passive coordination to active cross-session awareness (`em-proj session` registry) and communication (`em-proj message` broadcast/directed/topic via mailbox + live listener daemon), proven end-to-end into a live Claude Code session.
 
 ## Current Position
 
-Phase: Milestone complete (v1.0) — defining next milestone
+Phase: Not started (defining requirements)
 Plan: —
-Status: v1.0 archived to .planning/milestones/; tagged v1.0 on main
-Last activity: 2026-06-07 -- v1.0 milestone closed
+Status: Defining requirements
+Last activity: 2026-06-07 — Milestone v1.1 started
 
-Progress: [██████████] v1.0 shipped (7/7 phases, 30/30 plans, 29/29 requirements)
+Progress: [ ] 0% — defining requirements
 
 ## Accumulated Context
 
 ### Decisions
 
-Decisions are logged in PROJECT.md Key Decisions table (all v1.0 decisions marked ✓ Good). Foundational choices carried forward:
+Decisions are logged in PROJECT.md Key Decisions table. Foundational v1.0 choices carried forward + v1.1 framing decisions:
 
-- Backend = persistent Redis (foundation for all future primitives: session registry, messaging, handoff)
+- Backend = persistent Redis (now leveraged for pub/sub, mailbox, keyspace notifications)
 - Stack = Python 3.12+ via uv
-- Top-level namespace = `em-proj` (distinct from gsd-sdk)
-- Claim model is the substrate for "is it safe to edit X?" across sessions
-- gsd-sdk integration via shell-out, not source extension
+- Top-level namespace = `em-proj` (`session`, `message` are the new v1.1 subcommands)
+- v1.1 registry = hybrid (explicit register/heartbeat + enriched with held resources)
+- v1.1 messaging delivery = mailbox (pull, durable) + live pub/sub listener daemon that drains to mailbox
+- v1.1 daemon lifecycle = auto via SessionStart hook + explicit `session listen`/stop
+- v1.1 message scope = selectable per message (project_hash | upstream_identity | machine-global); directed by session_id
+- v1.1 patterns = broadcast + directed + topic; request/ack and blocking-wait deferred
+- v1.1 must prove end-to-end: a message surfaces in a live Claude Code session (validating consumer)
 
 ### Pending Todos
 
@@ -50,22 +54,21 @@ None.
 
 ### Blockers/Concerns
 
-None open. Note: a stray locked `worktree-agent-*` worktree + leftover agent branches remain from parallel execution (cosmetic git cruft; separate cleanup).
+- The listener daemon is a genuinely new runtime shape (long-lived process) vs v1.0's all-short-lived CLI invocations — lifecycle, cleanup, and crash-recovery need explicit design.
 
 ## Deferred Items
 
-Carried forward to future milestones (see PROJECT.md › Requirements › Active):
+Carried forward to future milestones (see PROJECT.md › Requirements › Active › Future):
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| feature | Session registry (cross-session discovery) | M2 candidate | v1.0 close |
-| feature | Inter-session messaging (pub/sub) | M3 candidate | v1.0 close |
 | feature | Workstream handoff protocol | M4+ candidate | v1.0 close |
 | feature | Memory/settings write coordination | candidate | v1.0 close |
 | feature | Workstream hard-mutex consumer | candidate | v1.0 close |
+| feature | Request/ack + blocking-wait messaging | deferred from v1.1 | v1.1 scoping |
 
 ## Session Continuity
 
 Last session: 2026-06-07
-Stopped at: v1.0 milestone closed (archived + tagged); ready for /gsd-new-milestone
+Stopped at: v1.1 milestone scoping — PROJECT.md updated, defining requirements next
 Resume file: —

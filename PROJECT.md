@@ -2,9 +2,9 @@
 
 ## What This Is
 
-A personal tooling CLI under the `em-proj` top-level namespace. The first deliverable (this milestone) lands the state primitive — `em-proj state` — a coordination layer for multiple Claude Code (and eventually other) terminal sessions running in parallel on the same machine. The state primitive exposes a kv store, advisory locks, and a long-lived "area claim" model that lets any session or sub-agent ask "is anyone else working on X?" before acting.
+A personal tooling CLI under the `em-proj` top-level namespace — a coordination layer for multiple Claude Code (and eventually other) terminal sessions running in parallel on the same machine. The shipped `em-proj state` primitive (v1.0) exposes a kv store, advisory locks, a long-lived "area claim" model, and a project-scoped reservation registry that let any session or sub-agent ask "is anyone else working on X?" before acting.
 
-Future capabilities under `em-proj` will follow as additional subcommands (`session`, `message`, future orchestration tooling) — the namespace is the user's seed of personal project tooling, distinct from framework CLIs like `gsd-sdk`.
+The next layer (v1.1) adds `em-proj session` (a live registry of who's running, where, holding what) and `em-proj message` (broadcast/directed/topic messaging between sessions) — moving from passive "is it safe?" coordination toward active cross-session communication. Further capabilities (workstream handoff, memory-write coordination) follow as additional subcommands — the namespace is the user's seed of personal project tooling, distinct from framework CLIs like `gsd-sdk`.
 
 ## Core Value
 
@@ -22,10 +22,26 @@ reservation registry for cross-clone coordination — all on persistent Redis.
 See `## Requirements › Validated` below and `.planning/MILESTONES.md` for the
 shipped record. Full phase detail: `.planning/milestones/v1.0-ROADMAP.md`.
 
-**Next milestone:** TBD — run `/gsd-new-milestone` to scope it. Candidate
-directions carried in `### Active` (v2) below: session registry (M2),
-inter-session messaging (M3), workstream handoff (M4+), memory/settings
-write coordination.
+## Current Milestone: v1.1 Session Registry + Inter-Session Messaging
+
+**Goal:** Extend `em-proj` from *passive* coordination (claims/locks/reservations)
+to *active* cross-session awareness and communication — a hybrid session registry
+plus a messaging layer delivered through durable mailboxes and a live pub/sub
+listener daemon, proven end-to-end by a message surfacing in a live Claude Code
+session.
+
+**Target features:**
+- **`em-proj session`** family — explicit `register` + heartbeat; `list`/`show` as a hybrid view (live sessions enriched with the claims/locks/reservations each holds); stale-eviction via heartbeat TTL
+- **Listener daemon** — per-session Redis pub/sub `SUBSCRIBE` process; auto-starts via SessionStart hook + explicit `session listen`/stop (both); drains received messages to the local mailbox on receipt; doubles as the registry heartbeat
+- **`em-proj message`** family — `send` in three patterns (broadcast, directed by `session_id`, topic subscribe/unsubscribe), with selectable scope per message (`project_hash` | `upstream_identity` | machine-global); `inbox` to read the mailbox
+- **Durable per-recipient mailbox** (Redis), pull-based, with message TTL/cleanup
+- **Full end-to-end validating consumer** — a SessionStart/UserPromptSubmit hook that surfaces the mailbox into a live Claude Code session; a message from session A demonstrably appears in session B
+- **Multi-process harness** — registry liveness, A→B delivery across all 3 patterns × 3 scopes, daemon drain, stale eviction
+- **Skill read surface** — `/em-sessions` (or extend `/em-global-state`) for registry + inbox introspection
+
+**Explicitly deferred this milestone:** `request/ack` reply semantics; blocking-wait (`message wait`/BLPOP) delivery.
+
+See `### Active` requirements below for full detail.
 
 ## Requirements
 
@@ -47,14 +63,21 @@ Shipped and verified in **v1.0** (2026-06-07). Full detail:
 
 ### Active
 
-No milestone scoped yet. Candidate directions for the next milestone (run
-`/gsd-new-milestone` to scope and refine):
+**v1.1 (this milestone) — Session Registry + Inter-Session Messaging.** Full
+requirements with REQ-IDs in `.planning/REQUIREMENTS.md`:
 
-- [ ] **Session registry (M2)** — cross-session discovery; read view over v1.0's holder metadata (who's running, on what project, since when)
-- [ ] **Inter-session messaging (M3)** — pub/sub or RPC between sessions via Redis pub/sub + keyspace notifications
+- [ ] **Session registry (hybrid)** — explicit `register` + heartbeat, `list`/`show` enriched with held claims/locks/reservations, stale-eviction via heartbeat TTL
+- [ ] **Listener daemon** — per-session pub/sub process, auto + explicit lifecycle, drains to mailbox, heartbeats the registry
+- [ ] **Messaging** — broadcast / directed / topic patterns; selectable scope (project | upstream | machine-global); durable per-recipient mailbox with TTL
+- [ ] **End-to-end CC integration** — SessionStart/UserPromptSubmit hook surfaces the mailbox into a live session (validating consumer; A→B proven)
+- [ ] **Registry/inbox skill surface** + multi-process harness coverage
+
+**Future (deferred beyond v1.1):**
+
 - [ ] **Workstream handoff (M4+)** — formal protocol for one session passing work to another (built on registry + messaging + claims)
 - [ ] **Memory / settings write coordination** — `~/.claude/projects/<hash>/memory/` and `.claude/settings.local.json` races, via the same claim model
 - [ ] **Workstream hard-mutex consumer** — beyond the active-pointer claim case
+- [ ] **Request/ack + blocking-wait messaging** — reply semantics and BLPOP-style delivery, deferred from v1.1
 
 ### Out of Scope
 
@@ -144,4 +167,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-07 after v1.0 milestone (em-proj state primitive shipped)*
+*Last updated: 2026-06-07 — v1.0 shipped; v1.1 (session registry + messaging) scoping started*
