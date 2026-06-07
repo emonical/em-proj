@@ -5,6 +5,7 @@ from typing import Annotated
 import typer
 
 from em_proj import __version__
+from em_proj.session import session_app
 from em_proj.state import state_app
 
 app = typer.Typer(
@@ -38,6 +39,9 @@ def main(
 
 # Phase 2 subcommand mount (D-14) — nested typer app for KV / lock / claim verbs.
 app.add_typer(state_app, name="state", help="KV / lock / claim primitives")
+
+# Phase 8 subcommand mount (D-14) — session registry verbs.
+app.add_typer(session_app, name="session", help="Session registry — register, heartbeat, list, show.")
 
 
 if __name__ == "__main__":
