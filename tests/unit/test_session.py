@@ -577,9 +577,14 @@ def test_session_show_stale_session_raises_and_dels(clean_db) -> None:
 
 
 def test_session_py_has_no_forbidden_imports() -> None:
-    """session.py must not import typer, multiprocessing, subprocess, or threading."""
-    import em_proj.session as session_module
-    src_path = inspect.getfile(session_module)
+    """session._ops must not import typer, multiprocessing, subprocess, or threading.
+
+    After the session package restructuring (08-02), business logic lives in
+    em_proj.session._ops (not em_proj.session.__init__, which legitimately imports
+    typer for CLI wiring). This test checks the ops module source file directly.
+    """
+    import em_proj.session._ops as ops_module
+    src_path = inspect.getfile(ops_module)
     with open(src_path) as f:
         src = f.read()
 
