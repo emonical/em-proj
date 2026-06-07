@@ -87,17 +87,39 @@ Which phases cover which requirements. **Populated by the roadmapper.**
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SESS-01..05 | TBD | Pending |
-| DAEMON-01..05 | TBD | Pending |
-| MBOX-01..04 | TBD | Pending |
-| MSG-01..05 | TBD | Pending |
-| HOOK-01..04 | TBD | Pending |
-| SKILL-04..05 | TBD | Pending |
-| TEST-03..05 | TBD | Pending |
+| SESS-01 | Phase 8 | Pending |
+| SESS-02 | Phase 8 | Pending |
+| SESS-03 | Phase 8 | Pending |
+| SESS-04 | Phase 8 | Pending |
+| SESS-05 | Phase 8 | Pending |
+| TEST-03 | Phase 8 | Pending |
+| MBOX-01 | Phase 9 | Pending |
+| MBOX-02 | Phase 9 | Pending |
+| MBOX-03 | Phase 9 | Pending |
+| MBOX-04 | Phase 9 | Pending |
+| MSG-01 | Phase 10 | Pending |
+| MSG-02 | Phase 10 | Pending |
+| MSG-03 | Phase 10 | Pending |
+| MSG-04 | Phase 10 | Pending |
+| MSG-05 | Phase 10 | Pending |
+| TEST-04 | Phase 10 | Pending |
+| DAEMON-01 | Phase 11 | Pending |
+| DAEMON-02 | Phase 11 | Pending |
+| DAEMON-03 | Phase 11 | Pending |
+| DAEMON-04 | Phase 11 | Pending |
+| DAEMON-05 | Phase 11 | Pending |
+| TEST-05 | Phase 11 | Pending |
+| HOOK-01 | Phase 12 | Pending |
+| HOOK-02 | Phase 12 | Pending |
+| HOOK-03 | Phase 12 | Pending |
+| HOOK-04 | Phase 12 | Pending |
+| SKILL-04 | Phase 12 | Pending |
+| SKILL-05 | Phase 12 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 26 total
-- Mapped to phases: 0 (roadmapper to assign)
+- Mapped to phases: 26 (100% — no orphans, no duplicates)
+- Phase distribution: Phase 8 = 6 (SESS-01..05, TEST-03) · Phase 9 = 4 (MBOX-01..04) · Phase 10 = 6 (MSG-01..05, TEST-04) · Phase 11 = 6 (DAEMON-01..05, TEST-05) · Phase 12 = 6 (HOOK-01..04, SKILL-04..05)
 
 ---
 *Requirements defined: 2026-06-07*
