@@ -256,3 +256,26 @@ def test_max_body_chars_enforced(clean_db) -> None:
     oversized_body = "x" * (MAX_BODY_CHARS + 1)
     with pytest.raises(ValidationError):
         mbox_write(SESSION_ID, _make_msg(body=oversized_body))
+
+
+# ---------------------------------------------------------------------------
+# MBOX-02: --since input validation (WR-02 regression)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("bad_since", ["foo", "", "not-an-id", "abc-def", "-", "1-"])
+def test_invalid_since_raises_validation_error(clean_db, bad_since) -> None:
+    """A malformed --since must raise ValidationError, not leak a Redis ResponseError
+    traceback (WR-02). Validation runs before any Redis call, so it fires even on an
+    empty/absent mailbox (Redis validates stream-ID syntax before key lookup)."""
+    with pytest.raises(ValidationError):
+        mailbox_inbox(SESSION_ID, since=bad_since, peek=True)
+
+
+def test_valid_since_passes_validation(clean_db) -> None:
+    """A well-formed stream-id --since must NOT raise — sanity guard for the WR-02 fix.
+
+    On an empty mailbox a valid cursor simply yields an empty read.
+    """
+    result = mailbox_inbox(SESSION_ID, since="1717500000000-0", peek=True)
+    assert result == [], f"valid --since on empty mailbox must return []; got {result!r}"

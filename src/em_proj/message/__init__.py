@@ -28,8 +28,9 @@ from em_proj.message._ops import (
     mbox_blocking_read,
     mbox_write,
 )
-from em_proj.output import emit_ok, resolve_json_mode
+from em_proj.output import emit_error, emit_ok, resolve_json_mode
 from em_proj.redis_client import die_if_redis_unreachable, get_client
+from em_proj.state.kv import ValidationError
 
 __all__ = [
     "message_app",
@@ -81,11 +82,14 @@ def inbox_cmd(
 
     Exit code mapping:
       0 = success (empty mailbox is still exit 0)
-      1 = Redis unreachable
+      1 = Redis unreachable, or invalid --since value
     """
     json_mode = resolve_json_mode(json_flag)
     client = get_client()
     die_if_redis_unreachable(client)
     session_id = resolve_session_id()
-    messages = mailbox_inbox(session_id, since=since, peek=peek)
+    try:
+        messages = mailbox_inbox(session_id, since=since, peek=peek)
+    except ValidationError as e:
+        emit_error(e.code, e.message, json_mode=json_mode)
     emit_ok(data=messages, json_mode=json_mode)

@@ -37,10 +37,17 @@ Prohibited imports (enforced by tests/unit/test_mailbox.py and structural tests)
 from __future__ import annotations
 
 import json
+import re
 import time
 
 from em_proj.redis_client import get_client
 from em_proj.state.kv import ValidationError
+
+#: Valid Redis stream entry ID for `--since`: either "<ms>-<seq>" (the exact
+#: shape `_decode_entry` returns as msg_id) or a bare "<ms>". Anything else
+#: would be rejected by Redis XRANGE with a ResponseError; we reject it up front
+#: with a clean ValidationError instead of letting the traceback escape (WR-02).
+_STREAM_ID_RE = re.compile(r"^\d+-\d+$|^\d+$")
 
 # ---------------------------------------------------------------------------
 # Module-level constants
@@ -124,6 +131,23 @@ def _validate_body(body: str) -> None:
         raise ValidationError(
             code="validation_error",
             message=f"body exceeds {MAX_BODY_CHARS} characters",
+        )
+
+
+def _validate_since(since: str) -> None:
+    """Raise ValidationError if ``since`` is not a valid Redis stream entry ID.
+
+    A caller-supplied ``--since`` cursor is interpolated into the XRANGE lower
+    bound as ``f"({since}"``. A malformed value (e.g. ``--since foo`` or
+    ``--since ""``) makes Redis reject the command with a ``ResponseError`` —
+    even on an empty/absent mailbox, since Redis validates ID syntax before key
+    lookup. Catching it here keeps the no-traceback contract (WR-02). Per the
+    ValidationError convention the message does NOT echo the rejected value.
+    """
+    if _STREAM_ID_RE.fullmatch(since) is None:
+        raise ValidationError(
+            code="validation_error",
+            message="invalid --since value: must be a stream entry ID like '1717500000000-0'",
         )
 
 
@@ -214,7 +238,13 @@ def mailbox_inbox(
     Returns:
         list[dict]: Ordered list of MBOX-04 record dicts, ascending by msg_id.
                     Empty list if mailbox is absent or has no qualifying entries.
+
+    Raises:
+        ValidationError: If ``since`` is provided but is not a valid stream ID.
     """
+    if since is not None:
+        _validate_since(since)  # fail fast before any Redis call (WR-02)
+
     client = get_client()
     key = _build_mbox_key(session_id)
 
