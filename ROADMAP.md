@@ -25,7 +25,7 @@ Full phase details, success criteria, and milestone summary archived in
 
 ### v1.1 Session Registry + Inter-Session Messaging (Phases 8-12)
 
-- [ ] **Phase 8: Session Registry (Hybrid)** - Live registry of who's running, enriched with held claims/locks/reservations, with stale reaping
+- [x] **Phase 8: Session Registry (Hybrid)** - Live registry of who's running, enriched with held claims/locks/reservations, with stale reaping
 - [ ] **Phase 9: Durable Mailbox Transport** - Per-recipient Redis mailbox that persists messages for offline sessions (owns the Streams-vs-List transport decision)
 - [ ] **Phase 10: Messaging Send Patterns** - `message send`/`broadcast`/`subscribe` across directed/broadcast/topic patterns × selectable scope
 - [ ] **Phase 11: Listener Daemon** - Per-session pub/sub daemon that drains live messages to the mailbox and heartbeats the registry
@@ -45,9 +45,14 @@ Full phase details, success criteria, and milestone summary archived in
   5. The multi-process harness proves registry liveness and stale reaping across fork+exec'd sessions.
 **Plans**: 3 plans
 Plans:
-- [ ] 08-01-PLAN.md — session.py core module (register, heartbeat, list, show, enrichment join, stale reaping)
-- [ ] 08-02-PLAN.md — session CLI subcommand wiring (session_app Typer + cli.py mount)
-- [ ] 08-03-PLAN.md — TEST-03 multiprocess harness + Phase 8 structural shape tests
+**Wave 1**
+- [x] 08-01-PLAN.md — session.py core module (register, heartbeat, list, show, enrichment join, stale reaping)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [x] 08-02-PLAN.md — session CLI subcommand wiring (session_app Typer + cli.py mount)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [x] 08-03-PLAN.md — TEST-03 multiprocess harness + Phase 8 structural shape tests
 
 ### Phase 9: Durable Mailbox Transport
 **Goal**: Every session has a durable per-recipient mailbox that holds messages until the session reads them — even if the session was offline when the message was sent.
@@ -107,7 +112,7 @@ Plans:
 | 5. `/em-global-state` Skill Surface | v1.0 | 5/5 | Complete | 2026-05-26 |
 | 6. gsd-sdk Workstream Consumer | v1.0 | 3/3 | Complete | 2026-05-27 |
 | 7. Project-Scoped Reservation Registry | v1.0 | 3/3 | Complete | 2026-06-04 |
-| 8. Session Registry (Hybrid) | v1.1 | 0/3 | In planning | - |
+| 8. Session Registry (Hybrid) | v1.1 | 3/3 | Complete | 2026-06-07 |
 | 9. Durable Mailbox Transport | v1.1 | 0/0 | Not started | - |
 | 10. Messaging Send Patterns | v1.1 | 0/0 | Not started | - |
 | 11. Listener Daemon | v1.1 | 0/0 | Not started | - |
