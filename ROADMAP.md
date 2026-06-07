@@ -43,7 +43,11 @@ Full phase details, success criteria, and milestone summary archived in
   3. `em-proj session show <session_id>` returns one session's full record plus its held resources.
   4. A session that dies (dead pid / proc_start mismatch / boot-id change / TTL lapse) is excluded from `list` and reaped, using the v1.0 stale-detection composite.
   5. The multi-process harness proves registry liveness and stale reaping across fork+exec'd sessions.
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 08-01-PLAN.md — session.py core module (register, heartbeat, list, show, enrichment join, stale reaping)
+- [ ] 08-02-PLAN.md — session CLI subcommand wiring (session_app Typer + cli.py mount)
+- [ ] 08-03-PLAN.md — TEST-03 multiprocess harness + Phase 8 structural shape tests
 
 ### Phase 9: Durable Mailbox Transport
 **Goal**: Every session has a durable per-recipient mailbox that holds messages until the session reads them — even if the session was offline when the message was sent.
@@ -103,7 +107,7 @@ Full phase details, success criteria, and milestone summary archived in
 | 5. `/em-global-state` Skill Surface | v1.0 | 5/5 | Complete | 2026-05-26 |
 | 6. gsd-sdk Workstream Consumer | v1.0 | 3/3 | Complete | 2026-05-27 |
 | 7. Project-Scoped Reservation Registry | v1.0 | 3/3 | Complete | 2026-06-04 |
-| 8. Session Registry (Hybrid) | v1.1 | 0/0 | Not started | - |
+| 8. Session Registry (Hybrid) | v1.1 | 0/3 | In planning | - |
 | 9. Durable Mailbox Transport | v1.1 | 0/0 | Not started | - |
 | 10. Messaging Send Patterns | v1.1 | 0/0 | Not started | - |
 | 11. Listener Daemon | v1.1 | 0/0 | Not started | - |
