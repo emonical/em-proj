@@ -66,13 +66,13 @@ Plans:
 **Plans**: 3 plans
 Plans:
 **Wave 0**
-- [ ] 09-01-PLAN.md — Wave 0 test scaffolds (unit stubs, structural shape, multiprocess durability stub)
+- [x] 09-01-PLAN.md — Wave 0 test scaffolds (unit stubs, structural shape, multiprocess durability stub)
 
 **Wave 1** *(blocked on Wave 0 completion)*
-- [ ] 09-02-PLAN.md — message/_ops.py core module (mbox_write, mailbox_inbox, mbox_blocking_read, constants)
+- [x] 09-02-PLAN.md — message/_ops.py core module (mbox_write, mailbox_inbox, mbox_blocking_read, constants)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 09-03-PLAN.md — message/__init__.py inbox verb + cli.py mount + structural tests GREEN
+- [x] 09-03-PLAN.md — message/__init__.py inbox verb + cli.py mount + structural tests GREEN
 
 ### Phase 10: Messaging Send Patterns
 **Goal**: A session can send a message to another session, to a scope-bounded group, or to a topic — and it lands durably in every matched recipient's mailbox.
