@@ -194,26 +194,51 @@ def test_uses_streams_not_list() -> None:
     """message/_ops.py must use Redis Streams (xadd + xrange), not Lists.
 
     Per 09-RESEARCH.md locked decision: plain XRANGE + XDEL (no consumer groups).
-    - 'xadd' and 'xrange' must appear (case-insensitive) in the source.
-    - 'xreadgroup' and 'xack' must NOT appear — consumer groups are explicitly
-      out of scope for Phase 9 (single-consumer mailbox; see research Anti-Patterns).
-    """
-    assert MESSAGE_OPS.exists(), "message/_ops.py missing — cannot check stream usage"
-    src = MESSAGE_OPS.read_text().lower()
+    - 'xadd' and 'xrange' must appear (case-insensitive) in the source text.
+    - 'xreadgroup' and 'xack' must NOT appear as actual method CALLS in the code
+      (AST-checked — prohibitions apply to executable statements, not docstrings
+      or comments that explain why consumer groups are deliberately not used).
 
-    assert "xadd" in src, (
+    Implementation note: the _ops.py module docstring explains the consumer-group
+    prohibition in prose (mentioning XREADGROUP/XACK as rationale). A naive
+    read_text().lower() check would match those docstring references and produce a
+    false positive. This test uses ast.walk to inspect only Attribute nodes that
+    appear as actual call targets in the AST, excluding string literals.
+    """
+    import ast
+
+    assert MESSAGE_OPS.exists(), "message/_ops.py missing — cannot check stream usage"
+    src = MESSAGE_OPS.read_text()
+
+    # Positive checks via plain source text (case-insensitive):
+    # xadd and xrange must appear somewhere in actual code (they are real method calls).
+    src_lower = src.lower()
+    assert "xadd" in src_lower, (
         "'xadd' not found in message/_ops.py — XADD is required for mailbox writes (MBOX-02)"
     )
-    assert "xrange" in src, (
+    assert "xrange" in src_lower, (
         "'xrange' not found in message/_ops.py — XRANGE is required for mailbox reads (MBOX-02)"
     )
-    assert "xreadgroup" not in src, (
-        "'xreadgroup' found in message/_ops.py — consumer groups are explicitly prohibited "
-        "(09-RESEARCH.md Anti-Patterns: single-consumer mailbox does not need PEL overhead)"
+
+    # Negative checks via AST: xreadgroup and xack must not appear as method CALLS.
+    # We collect all Attribute node .attr values that are the function in a Call node.
+    # This filters out docstrings and comments — only executable code is inspected.
+    tree = ast.parse(src)
+    called_methods = {
+        node.func.attr.lower()
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+    }
+    assert "xreadgroup" not in called_methods, (
+        "client.xreadgroup(...) call found in message/_ops.py — consumer groups are "
+        "explicitly prohibited (09-RESEARCH.md Anti-Patterns: single-consumer mailbox "
+        "does not need PEL overhead)"
     )
-    assert "xack" not in src, (
-        "'xack' found in message/_ops.py — consumer group ack is explicitly prohibited "
-        "(09-RESEARCH.md Anti-Patterns: use XDEL for consume-ack, not XACK)"
+    assert "xack" not in called_methods, (
+        "client.xack(...) call found in message/_ops.py — consumer group ack is "
+        "explicitly prohibited (09-RESEARCH.md Anti-Patterns: use XDEL for "
+        "consume-ack, not XACK)"
     )
 
 

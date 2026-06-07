@@ -5,6 +5,7 @@ from typing import Annotated
 import typer
 
 from em_proj import __version__
+from em_proj.message import message_app
 from em_proj.session import session_app
 from em_proj.state import state_app
 
@@ -42,6 +43,9 @@ app.add_typer(state_app, name="state", help="KV / lock / claim primitives")
 
 # Phase 8 subcommand mount (D-14) — session registry verbs.
 app.add_typer(session_app, name="session", help="Session registry — register, heartbeat, list, show.")
+
+# Phase 9 subcommand mount (D-14) — mailbox inbox verb.
+app.add_typer(message_app, name="message", help="Inter-session messaging — inbox.")
 
 
 if __name__ == "__main__":
