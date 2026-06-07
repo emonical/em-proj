@@ -63,7 +63,16 @@ Plans:
   2. `em-proj message inbox` reads the mailbox in order; consumption marks messages read/acked, `--peek` reads without consuming, `--since <id>` resumes from a point.
   3. Mailbox messages carry a TTL and are cleaned up after expiry or after read+ack; the mailbox is bounded against unbounded growth.
   4. A stored message record carries `{msg_id, from_session, pattern, scope, topic?, body, sent_at, ttl}`.
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+**Wave 0**
+- [ ] 09-01-PLAN.md — Wave 0 test scaffolds (unit stubs, structural shape, multiprocess durability stub)
+
+**Wave 1** *(blocked on Wave 0 completion)*
+- [ ] 09-02-PLAN.md — message/_ops.py core module (mbox_write, mailbox_inbox, mbox_blocking_read, constants)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 09-03-PLAN.md — message/__init__.py inbox verb + cli.py mount + structural tests GREEN
 
 ### Phase 10: Messaging Send Patterns
 **Goal**: A session can send a message to another session, to a scope-bounded group, or to a topic — and it lands durably in every matched recipient's mailbox.
@@ -113,7 +122,7 @@ Plans:
 | 6. gsd-sdk Workstream Consumer | v1.0 | 3/3 | Complete | 2026-05-27 |
 | 7. Project-Scoped Reservation Registry | v1.0 | 3/3 | Complete | 2026-06-04 |
 | 8. Session Registry (Hybrid) | v1.1 | 3/3 | Complete | 2026-06-07 |
-| 9. Durable Mailbox Transport | v1.1 | 0/0 | Not started | - |
+| 9. Durable Mailbox Transport | v1.1 | 0/3 | Not started | - |
 | 10. Messaging Send Patterns | v1.1 | 0/0 | Not started | - |
 | 11. Listener Daemon | v1.1 | 0/0 | Not started | - |
 | 12. End-to-End CC Integration + Skill Surface | v1.1 | 0/0 | Not started | - |
