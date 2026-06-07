@@ -17,8 +17,8 @@ triage:
   triaged_by: orchestrator
   critical_confirmed: 0
   critical_rejected: ["CR-01 — false positive (RESP2 list shape, not RESP3 dict)"]
-  real_actionable: ["WR-02 — malformed --since traceback (user-facing)"]
-  defensive_optional: ["WR-01 — corrupt-payload decode guard"]
+  resolved: ["WR-02 — fixed in commit e76d270 (_validate_since + emit_error + 7 tests)"]
+  defensive_optional: ["WR-01 — corrupt-payload decode guard (not applied)"]
   non_issue: ["WR-03 — client IS used for the reachability check"]
   deferred_phase_10: ["IN-01 — topic/from_session caps (no send verb yet)"]
 ---
@@ -284,14 +284,16 @@ Optional forward-compat hardening (handle both list and dict) could be added if 
 project ever switches to `protocol=3`, but that is not a bug today. `mbox_blocking_read`
 is currently unexercised (Phase 11), so a regression test would be worthwhile when it is wired.
 
-### WR-02 — **CONFIRMED real (user-facing), recommend fix.**
-A malformed `--since` (e.g. `--since foo`) builds `min="(foo"` and Redis rejects the
+### WR-02 — **CONFIRMED real → FIXED (commit e76d270).**
+A malformed `--since` (e.g. `--since foo`) built `min="(foo"` and Redis rejected the
 stream ID with `ResponseError` **even on an empty/absent mailbox** (Redis validates ID
 syntax before key lookup) → unhandled traceback, violating the no-traceback contract.
-NOTE: the reviewer's claim that "inbox_cmd does not need to change" is **incomplete** —
-an uncaught `ValidationError` still tracebacks through Typer. A correct fix needs BOTH a
-`_validate_since` guard in `_ops.py` AND verb-layer surfacing via `emit_error(...)`
-(the project's `ValidationError → emit_error` envelope pattern in `output.py`).
+The reviewer's "inbox_cmd does not need to change" was **incomplete** — an uncaught
+`ValidationError` still tracebacks through Typer. The applied fix does BOTH:
+`_validate_since` guard in `_ops.py` (fail-fast, before any Redis call) **and** verb-layer
+surfacing via `inbox_cmd`'s `except ValidationError → emit_error(...)` (exit 1, clean
+envelope), mirroring the state-verb pattern. Covered by 7 new tests (6 malformed cases
++ 1 valid-cursor guard).
 
 ### WR-01 — defensive/optional. Corrupt-payload guard in `_decode_entry`; in normal
 operation only `mbox_write` creates entries (always valid JSON), so this hardens against
