@@ -31,8 +31,20 @@ Rationale for no consumer groups:
   be layered in Phase 11+ if multi-process at-least-once semantics are needed.
   Per 09-RESEARCH.md section "Consumption / Ack Model".
 
+New in Phase 10 (send/subscribe patterns):
+  from_session  — injected by send_directed/send_broadcast/send_topic as
+                  resolve_session_id() at call time (the sender's identity).
+  pattern       — 'direct' | 'broadcast' | 'topic'
+  scope         — 'project' | 'upstream' | 'machine'
+  topic         — topic string or None
+  Topic membership lives in Redis SETs keyed topic:<scope_key>:<topic>
+  (TOPIC_KEY_PREFIX). Live delivery is a fire-and-forget PUBLISH to
+  msg:<session_id> per recipient after the durable mbox_write (Phase 11 daemon
+  consumes it). Fan-out is a plain Python loop with per-recipient failure
+  counting — NOT a redis pipeline (10-RESEARCH Pitfall 4).
+
 Prohibited imports (enforced by tests/unit/test_mailbox.py and structural tests):
-  typer, multiprocessing, threading
+  typer, multiprocessing, threading, pipeline (redis.client.Pipeline)
 """
 from __future__ import annotations
 
@@ -40,7 +52,15 @@ import json
 import re
 import time
 
+import redis as _redis
+
+from em_proj.identity import (
+    resolve_project_hash,
+    resolve_session_id,
+    resolve_upstream_identity,
+)
 from em_proj.redis_client import get_client
+from em_proj.session._ops import SessionNotFound, session_list, session_show
 from em_proj.state.kv import ValidationError
 
 #: Valid Redis stream entry ID for `--since`: either "<ms>-<seq>" (the exact
@@ -48,6 +68,12 @@ from em_proj.state.kv import ValidationError
 #: would be rejected by Redis XRANGE with a ResponseError; we reject it up front
 #: with a clean ValidationError instead of letting the traceback escape (WR-02).
 _STREAM_ID_RE = re.compile(r"^\d+-\d+$|^\d+$")
+
+#: Valid topic name: 1–128 chars of [a-zA-Z0-9_.-]. Anything else (notably ':',
+#: spaces, empty) is rejected by _validate_topic before the topic is used as a
+#: Redis key component — prevents key injection like "topic:machine:evil:key"
+#: (T-10-02-01).
+_TOPIC_RE = re.compile(r"^[a-zA-Z0-9_.\-]{1,128}$")
 
 # ---------------------------------------------------------------------------
 # Module-level constants
@@ -67,6 +93,12 @@ MBOX_TTL_SECONDS: int = 3600
 #: Maximum allowed body length in characters. Mirrors claim.py MAX_REASON_CHARS
 #: pattern. Raised as ValidationError before any Redis call (T-09-02-01).
 MAX_BODY_CHARS: int = 4096
+
+#: Key prefix for topic membership sets. Full key: "topic:<scope_key>:<topic>".
+#: Distinct from state:* and mbox: namespaces (no collision). Topic SET keys
+#: carry no TTL — subscribers persist until they unsubscribe; stale members are
+#: filtered at send time by intersecting with live sessions (10-RESEARCH DD2).
+TOPIC_KEY_PREFIX: str = "topic:"
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +181,54 @@ def _validate_since(since: str) -> None:
             code="validation_error",
             message="invalid --since value: must be a stream entry ID like '1717500000000-0'",
         )
+
+
+def _validate_topic(topic: str) -> None:
+    """Raise ValidationError if ``topic`` is not a valid topic name.
+
+    Mirrors _validate_body / _validate_since: a topic becomes a Redis key
+    component (topic:<scope_key>:<topic>), so it must match _TOPIC_RE
+    ([a-zA-Z0-9_.-]{1,128}). Rejecting ':' and whitespace prevents key injection
+    (T-10-02-01). Per the ValidationError convention the message does not echo
+    the rejected value.
+    """
+    if _TOPIC_RE.fullmatch(topic) is None:
+        raise ValidationError(
+            code="validation_error",
+            message="invalid topic: must match [a-zA-Z0-9_.-]{1..128}",
+        )
+
+
+def _build_topic_key(scope_key: str, topic: str) -> str:
+    """Build the full Redis key for a topic membership SET.
+
+    Key shape: TOPIC_KEY_PREFIX + scope_key + ":" + topic
+    Example: "topic:machine:alerts", "topic:-Users-x-em-proj:myalerts"
+    """
+    return f"{TOPIC_KEY_PREFIX}{scope_key}:{topic}"
+
+
+def _resolve_scope_key(scope: str) -> str:
+    """Map a scope string to its scope_key for topic/broadcast key derivation.
+
+    "machine"  -> the literal "machine" (machine-global; no Redis or git call)
+    "project"  -> resolve_project_hash()    (cwd-as-dash path)
+    "upstream" -> resolve_upstream_identity()(canonical host:owner/repo)
+
+    Raises ValidationError for any other value (explicit allowlist, T-10-02-02).
+    Validating here lets callers (enumerate_scope_recipients, subscribe_topic,
+    etc.) reject a bad scope before touching Redis.
+    """
+    if scope == "machine":
+        return "machine"
+    if scope == "project":
+        return resolve_project_hash()
+    if scope == "upstream":
+        return resolve_upstream_identity()
+    raise ValidationError(
+        code="validation_error",
+        message=f"unknown scope: {scope!r}; must be 'project', 'upstream', or 'machine'",
+    )
 
 
 # ---------------------------------------------------------------------------
