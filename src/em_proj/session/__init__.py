@@ -43,7 +43,7 @@ from em_proj.output import (
     resolve_json_mode,
 )
 from em_proj.redis_client import die_if_redis_unreachable, get_client
-from em_proj.session._daemon import _daemon_foreground_run, _daemon_start
+from em_proj.session._daemon import _daemon_foreground_run, _daemon_start, _daemon_stop
 from em_proj.session._ops import (
     KEY_PREFIX,
     LUA_SESSION_HEARTBEAT,
@@ -238,14 +238,18 @@ def session_stop_cmd(
         typer.Option("--json/--no-json", help=_JSON_HELP),
     ] = None,
 ) -> None:
-    """Stop the per-session listener daemon (send SIGTERM, wait for clean exit).
+    """Stop the listener daemon for the current session.
 
-    TODO(Plan 11-02): Full implementation — read daemon HASH, validate pid via
-    is_holder_stale, send SIGTERM, wait for record to disappear.
+    Idempotent — returns success even if no daemon is running.
+    Self-stop only: uses resolve_session_id() as the HASH key (D-07).
 
     Exit code mapping:
-      0 = stopped (or no daemon running)
+      0 = daemon stopped, not running, or stale record cleared
       1 = Redis unreachable
     """
     json_mode = resolve_json_mode(json_flag)
-    emit_ok(data={"status": "not_implemented"}, json_mode=json_mode)
+    client = get_client()
+    die_if_redis_unreachable(client)
+    session_id = resolve_session_id()
+    result = _daemon_stop(session_id)
+    emit_ok(data=result, json_mode=json_mode)

@@ -206,6 +206,39 @@ def _daemon_start(session_id: str) -> dict:  # type: ignore[type-arg]
     return {"status": "started", "pid": proc.pid}
 
 
+def _daemon_stop(session_id: str) -> dict:  # type: ignore[type-arg]
+    """Stop the running daemon for session_id.
+
+    Self-stop only — uses session_id as the HASH key (D-07 locked decision).
+    Returns a status dict; never raises.
+
+    Exit conditions:
+      not_running         — no daemon HASH record found
+      stale_record_cleared — stale record found and cleared (no os.kill)
+      stop_signaled       — SIGTERM sent to live daemon pid
+      stopped             — daemon exited between stale-check and kill (ProcessLookupError)
+
+    Security: os.kill is NEVER called when is_holder_stale returns True.
+    SIGTERM-to-wrong-pid threat (T-11-02-01) mitigated by is_holder_stale probe
+    (pid + proc_start_epoch + boot_id triple) before any signal delivery.
+    """
+    record = _daemon_record_read(session_id)
+    if record is None:
+        return {"status": "not_running"}
+    if is_holder_stale(record):
+        _daemon_record_del(session_id)
+        return {"status": "stale_record_cleared"}
+    # Record exists and daemon is live — pid already int from _daemon_record_read.
+    pid = record["pid"]
+    try:
+        os.kill(pid, signal.SIGTERM)
+        return {"status": "stop_signaled", "pid": pid}
+    except ProcessLookupError:
+        # Daemon exited between the stale-check and the kill attempt.
+        _daemon_record_del(session_id)
+        return {"status": "stopped"}
+
+
 def _daemon_foreground_run(session_id: str) -> None:
     """Long-lived daemon body. Invoked by `session listen --foreground`.
 
