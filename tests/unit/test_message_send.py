@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import time
+import uuid
 
 import pytest
 import redis as redis_module
@@ -58,8 +59,13 @@ def _point_session_at_test_db(monkeypatch):
 
 
 def _unique_session_id() -> str:
-    """Generate a unique session_id for test isolation."""
-    return f"test-sess-{os.getpid()}-{time.time_ns()}"
+    """Generate a unique session_id for test isolation.
+
+    Includes a uuid4 suffix in addition to pid + time_ns: rapid successive calls
+    within one process can share a time_ns() value on coarse-granularity clocks
+    (macOS), which would collapse two 'distinct' sessions onto one Redis key.
+    """
+    return f"test-sess-{os.getpid()}-{time.time_ns()}-{uuid.uuid4().hex[:8]}"
 
 
 def _register_session_for_test(session_id, client):
@@ -313,8 +319,8 @@ def test_enumerate_scope_recipients_excludes_sender(redis_client, monkeypatch) -
     other = _unique_session_id()
     _register_session_for_test(other, redis_client)
 
-    recipients = enumerate_scope_recipients("machine")
-    assert sender not in recipients, "enumeration must exclude the calling session (Pitfall 1)"
+    recipients = enumerate_scope_recipients("machine", exclude_session_id=sender)
+    assert sender not in recipients, "explicit exclude_session_id must drop the sender (Pitfall 1)"
     assert other in recipients
 
 
