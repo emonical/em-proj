@@ -27,7 +27,7 @@ Full phase details, success criteria, and milestone summary archived in
 
 - [x] **Phase 8: Session Registry (Hybrid)** - Live registry of who's running, enriched with held claims/locks/reservations, with stale reaping
 - [ ] **Phase 9: Durable Mailbox Transport** - Per-recipient Redis mailbox that persists messages for offline sessions (owns the Streams-vs-List transport decision)
-- [ ] **Phase 10: Messaging Send Patterns** - `message send`/`broadcast`/`subscribe` across directed/broadcast/topic patterns × selectable scope
+- [x] **Phase 10: Messaging Send Patterns** - `message send`/`broadcast`/`subscribe` across directed/broadcast/topic patterns × selectable scope (completed 2026-06-08)
 - [ ] **Phase 11: Listener Daemon** - Per-session pub/sub daemon that drains live messages to the mailbox and heartbeats the registry
 - [ ] **Phase 12: End-to-End CC Integration + Skill Surface** - SessionStart/UserPromptSubmit hooks surface the mailbox into a live session (A→B proven); `/em-sessions` read+send skill surface
 
@@ -87,13 +87,13 @@ Plans:
 **Plans**: 3 plans
 Plans:
 **Wave 0**
-- [ ] 10-01-PLAN.md — Wave 0 RED test scaffolds (unit stubs, structural shape, multiprocess harness stubs + MBOX-01 activation)
+- [x] 10-01-PLAN.md — Wave 0 RED test scaffolds (unit stubs, structural shape, multiprocess harness stubs + MBOX-01 activation)
 
 **Wave 1** *(blocked on Wave 0 completion)*
-- [ ] 10-02-PLAN.md — message/_ops.py extensions (TOPIC_KEY_PREFIX, _validate_topic, send_directed, send_broadcast, send_topic, subscribe_topic, unsubscribe_topic, enumerate_scope_recipients)
+- [x] 10-02-PLAN.md — message/_ops.py extensions (TOPIC_KEY_PREFIX, _validate_topic, send_directed, send_broadcast, send_topic, subscribe_topic, unsubscribe_topic, enumerate_scope_recipients)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 10-03-PLAN.md — message/__init__.py CLI verbs (send, broadcast, subscribe, unsubscribe) + TEST-04 3×3 harness GREEN
+- [x] 10-03-PLAN.md — message/__init__.py CLI verbs (send, broadcast, subscribe, unsubscribe) + TEST-04 3×3 harness GREEN
 
 ### Phase 11: Listener Daemon
 **Goal**: Each session runs exactly one long-lived listener that picks up live pub/sub traffic, drains it into the mailbox, and keeps the registry heartbeat fresh — with a lifecycle that is crash-safe and idempotent.
@@ -132,6 +132,6 @@ Plans:
 | 7. Project-Scoped Reservation Registry | v1.0 | 3/3 | Complete | 2026-06-04 |
 | 8. Session Registry (Hybrid) | v1.1 | 3/3 | Complete | 2026-06-07 |
 | 9. Durable Mailbox Transport | v1.1 | 3/3 | Complete | 2026-06-07 |
-| 10. Messaging Send Patterns | v1.1 | 0/3 | In progress | - |
+| 10. Messaging Send Patterns | v1.1 | 3/3 | Complete   | 2026-06-08 |
 | 11. Listener Daemon | v1.1 | 0/0 | Not started | - |
 | 12. End-to-End CC Integration + Skill Surface | v1.1 | 0/0 | Not started | - |
