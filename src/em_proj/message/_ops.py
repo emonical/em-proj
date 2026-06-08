@@ -31,8 +31,20 @@ Rationale for no consumer groups:
   be layered in Phase 11+ if multi-process at-least-once semantics are needed.
   Per 09-RESEARCH.md section "Consumption / Ack Model".
 
+New in Phase 10 (send/subscribe patterns):
+  from_session  — injected by send_directed/send_broadcast/send_topic as
+                  resolve_session_id() at call time (the sender's identity).
+  pattern       — 'direct' | 'broadcast' | 'topic'
+  scope         — 'project' | 'upstream' | 'machine'
+  topic         — topic string or None
+  Topic membership lives in Redis SETs keyed topic:<scope_key>:<topic>
+  (TOPIC_KEY_PREFIX). Live delivery is a fire-and-forget PUBLISH to
+  msg:<session_id> per recipient after the durable mbox_write (Phase 11 daemon
+  consumes it). Fan-out is a plain Python loop with per-recipient failure
+  counting — NOT a redis pipeline (10-RESEARCH Pitfall 4).
+
 Prohibited imports (enforced by tests/unit/test_mailbox.py and structural tests):
-  typer, multiprocessing, threading
+  typer, multiprocessing, threading, pipeline (redis.client.Pipeline)
 """
 from __future__ import annotations
 
@@ -40,7 +52,15 @@ import json
 import re
 import time
 
+import redis as _redis
+
+from em_proj.identity import (
+    resolve_project_hash,
+    resolve_session_id,
+    resolve_upstream_identity,
+)
 from em_proj.redis_client import get_client
+from em_proj.session._ops import SessionNotFound, session_list, session_show
 from em_proj.state.kv import ValidationError
 
 #: Valid Redis stream entry ID for `--since`: either "<ms>-<seq>" (the exact
@@ -48,6 +68,12 @@ from em_proj.state.kv import ValidationError
 #: would be rejected by Redis XRANGE with a ResponseError; we reject it up front
 #: with a clean ValidationError instead of letting the traceback escape (WR-02).
 _STREAM_ID_RE = re.compile(r"^\d+-\d+$|^\d+$")
+
+#: Valid topic name: 1–128 chars of [a-zA-Z0-9_.-]. Anything else (notably ':',
+#: spaces, empty) is rejected by _validate_topic before the topic is used as a
+#: Redis key component — prevents key injection like "topic:machine:evil:key"
+#: (T-10-02-01).
+_TOPIC_RE = re.compile(r"^[a-zA-Z0-9_.\-]{1,128}$")
 
 # ---------------------------------------------------------------------------
 # Module-level constants
@@ -67,6 +93,12 @@ MBOX_TTL_SECONDS: int = 3600
 #: Maximum allowed body length in characters. Mirrors claim.py MAX_REASON_CHARS
 #: pattern. Raised as ValidationError before any Redis call (T-09-02-01).
 MAX_BODY_CHARS: int = 4096
+
+#: Key prefix for topic membership sets. Full key: "topic:<scope_key>:<topic>".
+#: Distinct from state:* and mbox: namespaces (no collision). Topic SET keys
+#: carry no TTL — subscribers persist until they unsubscribe; stale members are
+#: filtered at send time by intersecting with live sessions (10-RESEARCH DD2).
+TOPIC_KEY_PREFIX: str = "topic:"
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +181,54 @@ def _validate_since(since: str) -> None:
             code="validation_error",
             message="invalid --since value: must be a stream entry ID like '1717500000000-0'",
         )
+
+
+def _validate_topic(topic: str) -> None:
+    """Raise ValidationError if ``topic`` is not a valid topic name.
+
+    Mirrors _validate_body / _validate_since: a topic becomes a Redis key
+    component (topic:<scope_key>:<topic>), so it must match _TOPIC_RE
+    ([a-zA-Z0-9_.-]{1,128}). Rejecting ':' and whitespace prevents key injection
+    (T-10-02-01). Per the ValidationError convention the message does not echo
+    the rejected value.
+    """
+    if _TOPIC_RE.fullmatch(topic) is None:
+        raise ValidationError(
+            code="validation_error",
+            message="invalid topic: must match [a-zA-Z0-9_.-]{1..128}",
+        )
+
+
+def _build_topic_key(scope_key: str, topic: str) -> str:
+    """Build the full Redis key for a topic membership SET.
+
+    Key shape: TOPIC_KEY_PREFIX + scope_key + ":" + topic
+    Example: "topic:machine:alerts", "topic:-Users-x-em-proj:myalerts"
+    """
+    return f"{TOPIC_KEY_PREFIX}{scope_key}:{topic}"
+
+
+def _resolve_scope_key(scope: str) -> str:
+    """Map a scope string to its scope_key for topic/broadcast key derivation.
+
+    "machine"  -> the literal "machine" (machine-global; no Redis or git call)
+    "project"  -> resolve_project_hash()    (cwd-as-dash path)
+    "upstream" -> resolve_upstream_identity()(canonical host:owner/repo)
+
+    Raises ValidationError for any other value (explicit allowlist, T-10-02-02).
+    Validating here lets callers (enumerate_scope_recipients, subscribe_topic,
+    etc.) reject a bad scope before touching Redis.
+    """
+    if scope == "machine":
+        return "machine"
+    if scope == "project":
+        return resolve_project_hash()
+    if scope == "upstream":
+        return resolve_upstream_identity()
+    raise ValidationError(
+        code="validation_error",
+        message=f"unknown scope: {scope!r}; must be 'project', 'upstream', or 'machine'",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -313,3 +393,230 @@ def mbox_blocking_read(
     # result shape: [[stream_name, [(id, fields), ...]]]
     _, entries = result[0]
     return [_decode_entry(eid, fields) for eid, fields in entries]
+
+
+# ---------------------------------------------------------------------------
+# Phase 10 — scope enumeration + topic membership
+# ---------------------------------------------------------------------------
+
+
+def enumerate_scope_recipients(
+    scope: str,
+    exclude_session_id: str | None = None,
+) -> list[str]:
+    """Return live session_ids in ``scope``, excluding ``exclude_session_id``.
+
+    Calls session_list() (which applies is_holder_stale filtering — only live
+    sessions are returned) and filters by the scope field:
+      machine  -> all live sessions
+      project  -> sessions whose project_hash == resolve_project_hash()
+      upstream -> sessions whose upstream_identity == resolve_upstream_identity()
+
+    _resolve_scope_key(scope) is called first to validate the scope (raising
+    ValidationError on an unknown scope); for project/upstream its return value
+    is also what we filter the session field against (10-RESEARCH DD1). No new
+    Redis index is needed — session_list() already returns project_hash /
+    upstream_identity per session.
+    """
+    scope_key = _resolve_scope_key(scope)  # validates scope; raises on unknown
+    sessions = session_list()
+    recipients: list[str] = []
+    for entry in sessions:
+        sess = entry["session"]
+        sid = sess["session_id"]
+        if scope == "project" and sess["project_hash"] != scope_key:
+            continue
+        if scope == "upstream" and sess["upstream_identity"] != scope_key:
+            continue
+        if exclude_session_id is not None and sid == exclude_session_id:
+            continue
+        recipients.append(sid)
+    return recipients
+
+
+def subscribe_topic(session_id: str, topic: str, scope: str) -> None:
+    """Add ``session_id`` to the topic membership SET topic:<scope_key>:<topic>.
+
+    Validates the topic name before touching Redis. The scope_key is derived from
+    the calling process's identity (subscriber's own scope) per 10-RESEARCH
+    Pitfall 3. SADD is idempotent — subscribing twice is a no-op.
+    """
+    _validate_topic(topic)
+    scope_key = _resolve_scope_key(scope)
+    key = _build_topic_key(scope_key, topic)
+    client = get_client()
+    client.sadd(key, session_id)
+
+
+def unsubscribe_topic(session_id: str, topic: str, scope: str) -> None:
+    """Remove ``session_id`` from the topic membership SET topic:<scope_key>:<topic>.
+
+    Validates the topic name before touching Redis. SREM is idempotent —
+    unsubscribing when not subscribed is a no-op.
+    """
+    _validate_topic(topic)
+    scope_key = _resolve_scope_key(scope)
+    key = _build_topic_key(scope_key, topic)
+    client = get_client()
+    client.srem(key, session_id)
+
+
+def get_topic_subscribers(scope: str, topic: str) -> set[str]:
+    """Return the set of subscriber session_ids for topic:<scope_key>:<topic>.
+
+    SMEMBERS returns a set[str] because get_client() uses decode_responses=True.
+    Members may include stale/dead session_ids — send_topic intersects them with
+    live sessions before fan-out (10-RESEARCH DD2 / Pitfall 2).
+    """
+    _validate_topic(topic)
+    scope_key = _resolve_scope_key(scope)
+    key = _build_topic_key(scope_key, topic)
+    client = get_client()
+    return client.smembers(key)
+
+
+# ---------------------------------------------------------------------------
+# Phase 10 — send patterns (directed / broadcast / topic)
+# ---------------------------------------------------------------------------
+
+
+def send_directed(to_session_id: str, body: str, scope: str) -> dict:  # type: ignore[type-arg]
+    """Send a directed message to one session's durable mailbox.
+
+    Validates the recipient exists via session_show (raises SessionNotFound if
+    absent or stale — the recipient-existence check deferred from Phase 9; D3
+    reaping fires on stale sessions). The durable path is mbox_write; a
+    fire-and-forget PUBLISH to msg:<session_id> is the live path (Phase 11 daemon
+    consumes it). ``scope`` is informational for a directed send — recorded in the
+    MBOX-04 record, no scope filtering is applied.
+
+    Returns a flat delivery-metadata dict (all scalars for clean TTY render):
+    {recipients_written, recipients_failed, pub_published, pattern, scope}.
+
+    Raises:
+        SessionNotFound: if the recipient is absent or stale.
+        ValidationError: if body exceeds MAX_BODY_CHARS (from mbox_write).
+    """
+    session_show(to_session_id)  # raises SessionNotFound; propagates to verb layer
+
+    sender_id = resolve_session_id()
+    msg = {
+        "from_session": sender_id,
+        "pattern": "direct",
+        "scope": scope,
+        "topic": None,
+        "body": body,
+        "sent_at": time.time(),
+        "ttl": MBOX_TTL_SECONDS,
+    }
+    client = get_client()
+    mbox_write(to_session_id, msg)
+    pub_count = client.publish(
+        f"msg:{to_session_id}",
+        json.dumps({"pattern": "direct", "scope": scope, "body": body}),
+    )
+    return {
+        "recipients_written": 1,
+        "recipients_failed": 0,
+        "pub_published": pub_count,
+        "pattern": "direct",
+        "scope": scope,
+    }
+
+
+def send_broadcast(body: str, scope: str) -> dict:  # type: ignore[type-arg]
+    """Broadcast a message to every live session in ``scope`` except the sender.
+
+    Recipients come from enumerate_scope_recipients(scope, exclude=sender) — which
+    validates the scope (raising ValidationError before any fan-out) and excludes
+    the sender (D-SelfExclude). Fan-out is a plain loop (NOT a pipeline); a
+    mid-loop ConnectionError/TimeoutError is counted, not raised, so a partial
+    fan-out returns recipients_failed > 0 (the verb layer maps that to exit 4).
+
+    Returns the flat delivery-metadata dict.
+    """
+    sender_id = resolve_session_id()
+    recipients = enumerate_scope_recipients(scope, exclude_session_id=sender_id)
+
+    client = get_client()
+    succeeded = 0
+    failed = 0
+    pub_published = 0
+    for recipient in recipients:
+        msg = {
+            "from_session": sender_id,
+            "pattern": "broadcast",
+            "scope": scope,
+            "topic": None,
+            "body": body,
+            "sent_at": time.time(),
+            "ttl": MBOX_TTL_SECONDS,
+        }
+        try:
+            mbox_write(recipient, msg)
+            pub_published += client.publish(
+                f"msg:{recipient}",
+                json.dumps({"pattern": "broadcast", "scope": scope, "body": body}),
+            )
+            succeeded += 1
+        except (_redis.ConnectionError, _redis.TimeoutError):
+            failed += 1
+    return {
+        "recipients_written": succeeded,
+        "recipients_failed": failed,
+        "pub_published": pub_published,
+        "pattern": "broadcast",
+        "scope": scope,
+    }
+
+
+def send_topic(topic: str, scope: str, body: str) -> dict:  # type: ignore[type-arg]
+    """Send a message to every live subscriber of ``topic`` in ``scope``.
+
+    Subscribers come from the topic SET (get_topic_subscribers); they are
+    intersected with the live sessions in scope (enumerate_scope_recipients, which
+    also excludes the sender) so stale/dead session_ids in the SET never receive a
+    write (10-RESEARCH Pitfall 2). Fan-out + partial-failure handling mirror
+    send_broadcast.
+
+    Raises:
+        ValidationError: if the topic name is invalid (validated first).
+
+    Returns the flat delivery-metadata dict.
+    """
+    _validate_topic(topic)
+    sender_id = resolve_session_id()
+    raw_subscribers = get_topic_subscribers(scope, topic)
+    live_recipients = enumerate_scope_recipients(scope, exclude_session_id=sender_id)
+    recipients = list(raw_subscribers & set(live_recipients))
+
+    client = get_client()
+    succeeded = 0
+    failed = 0
+    pub_published = 0
+    for recipient in recipients:
+        msg = {
+            "from_session": sender_id,
+            "pattern": "topic",
+            "scope": scope,
+            "topic": topic,
+            "body": body,
+            "sent_at": time.time(),
+            "ttl": MBOX_TTL_SECONDS,
+        }
+        try:
+            mbox_write(recipient, msg)
+            pub_published += client.publish(
+                f"msg:{recipient}",
+                json.dumps({"pattern": "topic", "scope": scope, "topic": topic, "body": body}),
+            )
+            succeeded += 1
+        except (_redis.ConnectionError, _redis.TimeoutError):
+            failed += 1
+    return {
+        "recipients_written": succeeded,
+        "recipients_failed": failed,
+        "pub_published": pub_published,
+        "pattern": "topic",
+        "scope": scope,
+    }
