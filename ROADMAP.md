@@ -105,7 +105,13 @@ Plans:
   3. While alive, the daemon refreshes the session registry heartbeat (listener and liveness are one process).
   4. An explicit stop verb terminates the daemon, double-start is idempotent (exactly one daemon per session), and a crashed daemon is detectable (stale daemon record), never wedges the session, and restarts safely.
   5. The harness proves daemon lifecycle (start/stop/auto/idempotent/crash-recovery) and drain-to-mailbox.
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+**Wave 1**
+- [ ] 11-01-PLAN.md — _daemon.py body (foreground loop, heartbeat, pub/sub, daemon HASH ops) + session listen verb + structural shape tests + start/heartbeat/liveness multiprocess tests (DAEMON-01, DAEMON-02, DAEMON-03)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 11-02-PLAN.md — _daemon_stop function + session stop verb + idempotency/crash-recovery/stop multiprocess tests (DAEMON-04, DAEMON-05, TEST-05)
 
 ### Phase 12: End-to-End CC Integration + Skill Surface
 **Goal**: A message sent from one live Claude Code session demonstrably appears in another live session's context, and sub-agents/skills can read the registry and inbox and send messages — proving the milestone end-to-end.
@@ -133,5 +139,5 @@ Plans:
 | 8. Session Registry (Hybrid) | v1.1 | 3/3 | Complete | 2026-06-07 |
 | 9. Durable Mailbox Transport | v1.1 | 3/3 | Complete | 2026-06-07 |
 | 10. Messaging Send Patterns | v1.1 | 3/3 | Complete   | 2026-06-08 |
-| 11. Listener Daemon | v1.1 | 0/0 | Not started | - |
+| 11. Listener Daemon | v1.1 | 0/2 | Not started | - |
 | 12. End-to-End CC Integration + Skill Surface | v1.1 | 0/0 | Not started | - |
