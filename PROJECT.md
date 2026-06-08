@@ -134,6 +134,15 @@ Backed by brew-managed persistent Redis. `main` tagged `v1.0` at `ae27bb6`.
 - **Communication style:** Concise, opinionated recommendations; no vendor-tradeoff matrices unless asked.
 - **Skills are read+escape-hatch only:** The `/em-global-state` skill never writes through itself except for `unlock`/`release` with explicit `--force` and confirmation. Writes must declare themselves through code (CLI calls or SDK), never through ad-hoc debug surfaces.
 
+## Planning Conventions
+
+These bind `/gsd-plan-phase` (and `/gsd-discuss-phase`) when structuring any phase for this project:
+
+- **Every plan is a green vertical slice.** Each PLAN.md takes a coherent unit of behavior and ends with the FULL test suite green. Within a plan, do RED→GREEN per task (write the failing test, then make it pass) — but the plan as a whole is committed green and is independently reviewable and mergeable.
+- **No standalone RED test-scaffold plan, and no "Wave 0 = lay all failing tests" wave.** The Nyquist rule (every requirement gets an automated verify *defined before the code*) is satisfied test-first *inside each slice*, NOT by batching all failing tests into a separate plan/commit that leaves the suite red across plan boundaries. A plan whose deliverable is "tests that stay red until a later plan" is a planning defect — split the phase by behavior instead.
+- **Green-per-commit / main-always-green.** Because plans are green slices, branch history stays bisectable and any plan's commits can be reviewed and merged on their own — no squash-to-hide-red-history.
+- **Incident (2026-06-08):** Phases 09 and 10 were planned RED-wave-then-GREEN-wave (10-01 was an all-failing-tests plan, committed + SUMMARY'd while red). Phase 09 reached `main` with red intermediate commits via PR #5 before this was caught; Phase 10 had to be squash-merged (PR #6) to keep `main` green. Fixed here so Phase 11+ are planned as green vertical slices.
+
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
