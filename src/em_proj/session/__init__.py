@@ -1,9 +1,9 @@
-"""session subcommand family — D-14 mount module + register/heartbeat/list/show verbs.
+"""session subcommand family — D-14 mount module + register/heartbeat/list/show/listen/stop verbs.
 
 This module is the D-14 MOUNT POINT for the session subcommand family. It defines
-``session_app`` (the nested typer app mounted from ``cli.py``) and attaches four
-verb commands — ``register``, ``heartbeat``, ``list``, ``show`` — as thin per-verb
-command translation layers.
+``session_app`` (the nested typer app mounted from ``cli.py``) and attaches six
+verb commands — ``register``, ``heartbeat``, ``list``, ``show``, ``listen``, ``stop``
+— as thin per-verb command translation layers.
 
 Design contract — this module holds NO business logic
 ------------------------------------------------------
@@ -35,6 +35,7 @@ from typing import Annotated
 
 import typer
 
+from em_proj.identity import resolve_session_id
 from em_proj.output import (
     emit_error,
     emit_not_found,
@@ -42,6 +43,7 @@ from em_proj.output import (
     resolve_json_mode,
 )
 from em_proj.redis_client import die_if_redis_unreachable, get_client
+from em_proj.session._daemon import _daemon_foreground_run, _daemon_start
 from em_proj.session._ops import (
     KEY_PREFIX,
     LUA_SESSION_HEARTBEAT,
@@ -186,3 +188,64 @@ def session_show_cmd(
         emit_ok(data=record, json_mode=json_mode)
     except SessionNotFound as exc:
         emit_not_found(str(exc), json_mode=json_mode)
+
+
+@session_app.command("listen")
+def session_listen_cmd(
+    foreground: Annotated[
+        bool,
+        typer.Option(
+            "--foreground/--no-foreground",
+            help=(
+                "Run daemon in foreground (for testing/debugging). "
+                "Default: detach as background process."
+            ),
+        ),
+    ] = False,
+    json_flag: Annotated[
+        bool | None,
+        typer.Option("--json/--no-json", help=_JSON_HELP),
+    ] = None,
+) -> None:
+    """Start the per-session listener daemon (detached background process).
+
+    Double-start is idempotent — if a live daemon is already running for this
+    session, the command exits 0 with {"status": "already_running"}.
+
+    Use --foreground to run the daemon body in the calling process (for testing
+    and debugging). In foreground mode the process blocks until SIGTERM.
+
+    Exit code mapping:
+      0 = started, already running, or foreground run completed
+      1 = Redis unreachable
+    """
+    json_mode = resolve_json_mode(json_flag)
+    client = get_client()
+    die_if_redis_unreachable(client)
+    session_id = resolve_session_id()
+    if foreground:
+        # Blocks until SIGTERM — no emit (daemon runs until shutdown signal).
+        _daemon_foreground_run(session_id)
+    else:
+        result = _daemon_start(session_id)
+        emit_ok(data=result, json_mode=json_mode)
+
+
+@session_app.command("stop")
+def session_stop_cmd(
+    json_flag: Annotated[
+        bool | None,
+        typer.Option("--json/--no-json", help=_JSON_HELP),
+    ] = None,
+) -> None:
+    """Stop the per-session listener daemon (send SIGTERM, wait for clean exit).
+
+    TODO(Plan 11-02): Full implementation — read daemon HASH, validate pid via
+    is_holder_stale, send SIGTERM, wait for record to disappear.
+
+    Exit code mapping:
+      0 = stopped (or no daemon running)
+      1 = Redis unreachable
+    """
+    json_mode = resolve_json_mode(json_flag)
+    emit_ok(data={"status": "not_implemented"}, json_mode=json_mode)
