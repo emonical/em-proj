@@ -473,3 +473,150 @@ def get_topic_subscribers(scope: str, topic: str) -> set[str]:
     key = _build_topic_key(scope_key, topic)
     client = get_client()
     return client.smembers(key)
+
+
+# ---------------------------------------------------------------------------
+# Phase 10 — send patterns (directed / broadcast / topic)
+# ---------------------------------------------------------------------------
+
+
+def send_directed(to_session_id: str, body: str, scope: str) -> dict:  # type: ignore[type-arg]
+    """Send a directed message to one session's durable mailbox.
+
+    Validates the recipient exists via session_show (raises SessionNotFound if
+    absent or stale — the recipient-existence check deferred from Phase 9; D3
+    reaping fires on stale sessions). The durable path is mbox_write; a
+    fire-and-forget PUBLISH to msg:<session_id> is the live path (Phase 11 daemon
+    consumes it). ``scope`` is informational for a directed send — recorded in the
+    MBOX-04 record, no scope filtering is applied.
+
+    Returns a flat delivery-metadata dict (all scalars for clean TTY render):
+    {recipients_written, recipients_failed, pub_published, pattern, scope}.
+
+    Raises:
+        SessionNotFound: if the recipient is absent or stale.
+        ValidationError: if body exceeds MAX_BODY_CHARS (from mbox_write).
+    """
+    session_show(to_session_id)  # raises SessionNotFound; propagates to verb layer
+
+    sender_id = resolve_session_id()
+    msg = {
+        "from_session": sender_id,
+        "pattern": "direct",
+        "scope": scope,
+        "topic": None,
+        "body": body,
+        "sent_at": time.time(),
+        "ttl": MBOX_TTL_SECONDS,
+    }
+    client = get_client()
+    mbox_write(to_session_id, msg)
+    pub_count = client.publish(
+        f"msg:{to_session_id}",
+        json.dumps({"pattern": "direct", "scope": scope, "body": body}),
+    )
+    return {
+        "recipients_written": 1,
+        "recipients_failed": 0,
+        "pub_published": pub_count,
+        "pattern": "direct",
+        "scope": scope,
+    }
+
+
+def send_broadcast(body: str, scope: str) -> dict:  # type: ignore[type-arg]
+    """Broadcast a message to every live session in ``scope`` except the sender.
+
+    Recipients come from enumerate_scope_recipients(scope, exclude=sender) — which
+    validates the scope (raising ValidationError before any fan-out) and excludes
+    the sender (D-SelfExclude). Fan-out is a plain loop (NOT a pipeline); a
+    mid-loop ConnectionError/TimeoutError is counted, not raised, so a partial
+    fan-out returns recipients_failed > 0 (the verb layer maps that to exit 4).
+
+    Returns the flat delivery-metadata dict.
+    """
+    sender_id = resolve_session_id()
+    recipients = enumerate_scope_recipients(scope, exclude_session_id=sender_id)
+
+    client = get_client()
+    succeeded = 0
+    failed = 0
+    pub_published = 0
+    for recipient in recipients:
+        msg = {
+            "from_session": sender_id,
+            "pattern": "broadcast",
+            "scope": scope,
+            "topic": None,
+            "body": body,
+            "sent_at": time.time(),
+            "ttl": MBOX_TTL_SECONDS,
+        }
+        try:
+            mbox_write(recipient, msg)
+            pub_published += client.publish(
+                f"msg:{recipient}",
+                json.dumps({"pattern": "broadcast", "scope": scope, "body": body}),
+            )
+            succeeded += 1
+        except (_redis.ConnectionError, _redis.TimeoutError):
+            failed += 1
+    return {
+        "recipients_written": succeeded,
+        "recipients_failed": failed,
+        "pub_published": pub_published,
+        "pattern": "broadcast",
+        "scope": scope,
+    }
+
+
+def send_topic(topic: str, scope: str, body: str) -> dict:  # type: ignore[type-arg]
+    """Send a message to every live subscriber of ``topic`` in ``scope``.
+
+    Subscribers come from the topic SET (get_topic_subscribers); they are
+    intersected with the live sessions in scope (enumerate_scope_recipients, which
+    also excludes the sender) so stale/dead session_ids in the SET never receive a
+    write (10-RESEARCH Pitfall 2). Fan-out + partial-failure handling mirror
+    send_broadcast.
+
+    Raises:
+        ValidationError: if the topic name is invalid (validated first).
+
+    Returns the flat delivery-metadata dict.
+    """
+    _validate_topic(topic)
+    sender_id = resolve_session_id()
+    raw_subscribers = get_topic_subscribers(scope, topic)
+    live_recipients = enumerate_scope_recipients(scope, exclude_session_id=sender_id)
+    recipients = list(raw_subscribers & set(live_recipients))
+
+    client = get_client()
+    succeeded = 0
+    failed = 0
+    pub_published = 0
+    for recipient in recipients:
+        msg = {
+            "from_session": sender_id,
+            "pattern": "topic",
+            "scope": scope,
+            "topic": topic,
+            "body": body,
+            "sent_at": time.time(),
+            "ttl": MBOX_TTL_SECONDS,
+        }
+        try:
+            mbox_write(recipient, msg)
+            pub_published += client.publish(
+                f"msg:{recipient}",
+                json.dumps({"pattern": "topic", "scope": scope, "topic": topic, "body": body}),
+            )
+            succeeded += 1
+        except (_redis.ConnectionError, _redis.TimeoutError):
+            failed += 1
+    return {
+        "recipients_written": succeeded,
+        "recipients_failed": failed,
+        "pub_published": pub_published,
+        "pattern": "topic",
+        "scope": scope,
+    }
