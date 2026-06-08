@@ -181,17 +181,22 @@ def _daemon_start(session_id: str) -> dict:  # type: ignore[type-arg]
       {"status": "started",        "pid": <child_pid>}  — new daemon spawned
       {"status": "already_running","pid": <existing_pid>} — live daemon present
     """
-    # Step 1: Lua atomic write-or-detect — try to register this process.
-    result = _daemon_record_write(session_id)
-
-    if isinstance(result, dict):
-        # Key already existed — check whether the recorded daemon is still alive.
-        if not is_holder_stale(result):
-            return {"status": "already_running", "pid": result["pid"]}
-        # Stale record — clear it and proceed to spawn.
+    # Step 1: Read-only probe for an existing live daemon. The parent process
+    # MUST NOT write the HASH — the spawned child is the sole writer of its own
+    # record (in _daemon_foreground_run). Writing here would record the PARENT
+    # CLI pid, which exits immediately; that leaves a wrong/stale record, and if
+    # the parent is still alive when the child registers, the child would treat
+    # itself as a duplicate and exit without ever running the daemon.
+    record = _daemon_record_read(session_id)
+    if record is not None and not is_holder_stale(record):
+        return {"status": "already_running", "pid": record["pid"]}
+    if record is not None:
+        # Stale record from a crashed daemon — clear it before spawning.
         _daemon_record_del(session_id)
 
-    # Step 2: Spawn the daemon as a detached subprocess.
+    # Step 2: Spawn the daemon as a detached subprocess. It writes its own HASH
+    # record (with its own pid) as the first action in _daemon_foreground_run,
+    # guarded by the Lua write-or-detect single-instance check.
     # Use shutil.which to locate the em-proj binary; fall back to "em-proj" by name.
     binary = shutil.which("em-proj") or "em-proj"
     proc = subprocess.Popen(
@@ -258,9 +263,14 @@ def _daemon_foreground_run(session_id: str) -> None:
             # A live daemon is already registered — this process is a duplicate.
             # Race-condition guard (RESEARCH Pattern 3): exit cleanly.
             sys.exit(0)
-        # Stale record — clear it and re-register as this process.
+        # Stale record — clear it and re-register as this process. If another
+        # daemon won the re-registration race in the DEL→write window, the write
+        # returns that winner's live record; defer to it and exit cleanly rather
+        # than running a second daemon for the same session.
         _daemon_record_del(session_id)
-        _daemon_record_write(session_id)
+        retry_result = _daemon_record_write(session_id)
+        if isinstance(retry_result, dict) and not is_holder_stale(retry_result):
+            sys.exit(0)
 
     # Step 2: Set up Redis pub/sub. Two clients:
     #   cmd_client — used for heartbeat EVAL commands
@@ -280,8 +290,10 @@ def _daemon_foreground_run(session_id: str) -> None:
     signal.signal(signal.SIGTERM, _on_sigterm)
 
     # Step 4: Poll loop — receive pub/sub messages and refresh heartbeat.
+    # Use the module-level constant (evaluated at import from THIS child's env)
+    # as the single source of truth for the interval — no divergent re-read.
     last_heartbeat = time.monotonic()
-    interval = int(os.environ.get("EM_PROJ_DAEMON_HEARTBEAT_INTERVAL", "60"))
+    interval = DAEMON_HEARTBEAT_INTERVAL
 
     while not _shutdown:
         msg = ps.get_message(timeout=5.0)
@@ -293,7 +305,13 @@ def _daemon_foreground_run(session_id: str) -> None:
         now = time.monotonic()
         if now - last_heartbeat >= interval:
             try:
-                session_heartbeat()
+                hb = session_heartbeat()
+                # Guard env/arg divergence: session_heartbeat() resolves its
+                # target via resolve_session_id(); if that ever differs from the
+                # session_id this daemon owns, it just refreshed the WRONG key —
+                # our session is effectively gone, so exit cleanly.
+                if hb.get("session_id") != session_id:
+                    break
                 last_heartbeat = now
             except SessionNotFound:
                 # Session was reaped externally — clean exit.

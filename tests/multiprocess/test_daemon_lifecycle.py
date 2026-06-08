@@ -406,7 +406,7 @@ def test_daemon_crash_recovery(clean_db: redis_module.Redis) -> None:
     _register_session_for_test(session_id, clean_db)
     proc = _start_foreground_daemon(session_id)
     old_pid = proc.pid
-    new_proc = None
+    new_pid = None  # pid of the crash-recovery daemon, captured for cleanup fallback
     try:
         time.sleep(0.5)  # allow daemon to write HASH
         raw = _daemon_hash(clean_db, session_id)
@@ -454,9 +454,73 @@ def test_daemon_crash_recovery(clean_db: redis_module.Redis) -> None:
             f"new HASH pid {raw_new['pid']} != spawned pid {new_pid}"
         )
     finally:
-        # Stop the new daemon if it started; ignore errors.
+        # Stop the new daemon via CLI; if that failed to reap it (Redis hiccup,
+        # HASH already gone, etc.), SIGTERM the captured pid directly as a
+        # fallback so the detached crash-recovery daemon never leaks.
         _run_cli(["session", "stop"], session_id=session_id, timeout=5.0)
         time.sleep(1.0)
-        if new_proc is not None and new_proc.poll() is None:
-            new_proc.kill()
-            new_proc.wait(timeout=3)
+        if new_pid is not None:
+            try:
+                os.kill(int(new_pid), signal.SIGTERM)
+            except (ProcessLookupError, OSError):
+                pass
+
+
+def test_daemon_start_detaches(clean_db: redis_module.Redis) -> None:
+    """DAEMON-01 detach path: `session listen` (no --foreground) spawns a
+    background daemon, returns immediately with status=started, and the daemon
+    records ITS OWN pid in the HASH (not the parent CLI's).
+
+    Covers the production code path (the default, non-foreground invocation) and
+    guards the C-01 regression: the parent CLI must NOT write the HASH; the
+    spawned child is the sole writer of its own pid.
+    """
+    session_id = "test-daemon-detaches"
+    _register_session_for_test(session_id, clean_db)
+    new_pid = None
+    try:
+        # Non-foreground: the verb spawns a detached child and returns at once.
+        result = _run_cli(
+            ["session", "listen", "--json"],
+            session_id=session_id,
+            env_overrides={"EM_PROJ_DAEMON_HEARTBEAT_INTERVAL": "1"},
+        )
+        assert result.returncode == 0, (
+            f"session listen (detach) should exit 0; got rc={result.returncode}, "
+            f"stderr={result.stderr!r}"
+        )
+        envelope = json.loads(result.stdout.strip())
+        data = envelope.get("data", {})
+        assert data.get("status") == "started", (
+            f"expected started, got {data.get('status')!r}. Full envelope: {envelope!r}"
+        )
+        new_pid = data.get("pid")
+        assert new_pid is not None, "started response must include the daemon pid"
+
+        # The detached child must register ITS OWN pid in the HASH (not the
+        # parent CLI's, which has already exited). Poll briefly for the write.
+        deadline = time.monotonic() + 3.0
+        raw = None
+        while time.monotonic() < deadline:
+            raw = _daemon_hash(clean_db, session_id)
+            if raw is not None:
+                break
+            time.sleep(0.1)
+        assert raw is not None, (
+            f"daemon:{session_id} HASH absent after detach — the child daemon "
+            "never wrote its record (C-01 regression: parent must not pre-write)"
+        )
+        assert int(raw["pid"]) == int(new_pid), (
+            f"HASH pid {raw['pid']!r} != reported daemon pid {new_pid} — "
+            "the HASH must hold the child daemon's pid, not the parent CLI's"
+        )
+        # The recorded pid must be a live process (the detached daemon).
+        os.kill(int(raw["pid"]), 0)  # raises ProcessLookupError if not alive
+    finally:
+        _run_cli(["session", "stop"], session_id=session_id, timeout=5.0)
+        time.sleep(1.0)
+        if new_pid is not None:
+            try:
+                os.kill(int(new_pid), signal.SIGTERM)
+            except (ProcessLookupError, OSError):
+                pass
