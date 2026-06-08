@@ -393,3 +393,83 @@ def mbox_blocking_read(
     # result shape: [[stream_name, [(id, fields), ...]]]
     _, entries = result[0]
     return [_decode_entry(eid, fields) for eid, fields in entries]
+
+
+# ---------------------------------------------------------------------------
+# Phase 10 — scope enumeration + topic membership
+# ---------------------------------------------------------------------------
+
+
+def enumerate_scope_recipients(
+    scope: str,
+    exclude_session_id: str | None = None,
+) -> list[str]:
+    """Return live session_ids in ``scope``, excluding ``exclude_session_id``.
+
+    Calls session_list() (which applies is_holder_stale filtering — only live
+    sessions are returned) and filters by the scope field:
+      machine  -> all live sessions
+      project  -> sessions whose project_hash == resolve_project_hash()
+      upstream -> sessions whose upstream_identity == resolve_upstream_identity()
+
+    _resolve_scope_key(scope) is called first to validate the scope (raising
+    ValidationError on an unknown scope); for project/upstream its return value
+    is also what we filter the session field against (10-RESEARCH DD1). No new
+    Redis index is needed — session_list() already returns project_hash /
+    upstream_identity per session.
+    """
+    scope_key = _resolve_scope_key(scope)  # validates scope; raises on unknown
+    sessions = session_list()
+    recipients: list[str] = []
+    for entry in sessions:
+        sess = entry["session"]
+        sid = sess["session_id"]
+        if scope == "project" and sess["project_hash"] != scope_key:
+            continue
+        if scope == "upstream" and sess["upstream_identity"] != scope_key:
+            continue
+        if exclude_session_id is not None and sid == exclude_session_id:
+            continue
+        recipients.append(sid)
+    return recipients
+
+
+def subscribe_topic(session_id: str, topic: str, scope: str) -> None:
+    """Add ``session_id`` to the topic membership SET topic:<scope_key>:<topic>.
+
+    Validates the topic name before touching Redis. The scope_key is derived from
+    the calling process's identity (subscriber's own scope) per 10-RESEARCH
+    Pitfall 3. SADD is idempotent — subscribing twice is a no-op.
+    """
+    _validate_topic(topic)
+    scope_key = _resolve_scope_key(scope)
+    key = _build_topic_key(scope_key, topic)
+    client = get_client()
+    client.sadd(key, session_id)
+
+
+def unsubscribe_topic(session_id: str, topic: str, scope: str) -> None:
+    """Remove ``session_id`` from the topic membership SET topic:<scope_key>:<topic>.
+
+    Validates the topic name before touching Redis. SREM is idempotent —
+    unsubscribing when not subscribed is a no-op.
+    """
+    _validate_topic(topic)
+    scope_key = _resolve_scope_key(scope)
+    key = _build_topic_key(scope_key, topic)
+    client = get_client()
+    client.srem(key, session_id)
+
+
+def get_topic_subscribers(scope: str, topic: str) -> set[str]:
+    """Return the set of subscriber session_ids for topic:<scope_key>:<topic>.
+
+    SMEMBERS returns a set[str] because get_client() uses decode_responses=True.
+    Members may include stale/dead session_ids — send_topic intersects them with
+    live sessions before fan-out (10-RESEARCH DD2 / Pitfall 2).
+    """
+    _validate_topic(topic)
+    scope_key = _resolve_scope_key(scope)
+    key = _build_topic_key(scope_key, topic)
+    client = get_client()
+    return client.smembers(key)
