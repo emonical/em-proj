@@ -535,7 +535,11 @@ This mirrors the exact pattern from `test_mailbox_durability.py`. [VERIFIED: `te
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All four resolved during planning (gsd-plan-phase 10) by adopting each recommendation below:
+> (1) include `pub_published: 0` now; (2) one `send` verb with `--to`/`--topic` mutual exclusion in the verb shell;
+> (3) `broadcast` as a separate verb; (4) subscribe/unsubscribe default `--scope machine`.
 
 1. **pub_published metadata accuracy**
    - What we know: `client.publish(channel, payload)` returns the number of subscribers who received the message; in Phase 10 this is always 0.

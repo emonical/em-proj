@@ -84,7 +84,16 @@ Plans:
   3. `em-proj message subscribe`/`unsubscribe <topic>` manage topic membership, and `message send --topic <topic> --scope <...>` routes to that scope's subscribers.
   4. `em-proj message send` returns parseable delivery metadata (recipients matched, live vs mailbox-only) with semantic exit codes.
   5. The harness proves A→B delivery across all 3 patterns (directed/broadcast/topic) × 3 scopes (project/upstream/machine).
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+**Wave 0**
+- [ ] 10-01-PLAN.md — Wave 0 RED test scaffolds (unit stubs, structural shape, multiprocess harness stubs + MBOX-01 activation)
+
+**Wave 1** *(blocked on Wave 0 completion)*
+- [ ] 10-02-PLAN.md — message/_ops.py extensions (TOPIC_KEY_PREFIX, _validate_topic, send_directed, send_broadcast, send_topic, subscribe_topic, unsubscribe_topic, enumerate_scope_recipients)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 10-03-PLAN.md — message/__init__.py CLI verbs (send, broadcast, subscribe, unsubscribe) + TEST-04 3×3 harness GREEN
 
 ### Phase 11: Listener Daemon
 **Goal**: Each session runs exactly one long-lived listener that picks up live pub/sub traffic, drains it into the mailbox, and keeps the registry heartbeat fresh — with a lifecycle that is crash-safe and idempotent.
@@ -123,6 +132,6 @@ Plans:
 | 7. Project-Scoped Reservation Registry | v1.0 | 3/3 | Complete | 2026-06-04 |
 | 8. Session Registry (Hybrid) | v1.1 | 3/3 | Complete | 2026-06-07 |
 | 9. Durable Mailbox Transport | v1.1 | 3/3 | Complete | 2026-06-07 |
-| 10. Messaging Send Patterns | v1.1 | 0/0 | Not started | - |
+| 10. Messaging Send Patterns | v1.1 | 0/3 | In progress | - |
 | 11. Listener Daemon | v1.1 | 0/0 | Not started | - |
 | 12. End-to-End CC Integration + Skill Surface | v1.1 | 0/0 | Not started | - |
