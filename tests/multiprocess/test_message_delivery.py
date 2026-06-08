@@ -23,6 +23,7 @@ import json
 import os
 import subprocess
 import time
+import uuid
 
 import pytest
 import redis as redis_module
@@ -35,8 +36,13 @@ from tests.conftest import EM_PROJ_BIN, TEST_DB
 
 
 def _unique_session_id() -> str:
-    """Generate a unique session_id for test isolation."""
-    return f"test-sess-{os.getpid()}-{time.time_ns()}"
+    """Generate a unique session_id for test isolation.
+
+    Includes a uuid4 suffix in addition to pid + time_ns: rapid successive calls
+    can share a time_ns() value on coarse-granularity clocks (macOS), which would
+    collapse two 'distinct' sessions onto one Redis key.
+    """
+    return f"test-sess-{os.getpid()}-{time.time_ns()}-{uuid.uuid4().hex[:8]}"
 
 
 def _register_session_for_test(session_id: str, client: redis_module.Redis) -> dict:
@@ -126,46 +132,208 @@ def _inbox_via_cli(session_id: str) -> list:
 
 
 # ---------------------------------------------------------------------------
-# Mailbox-path cells — 3 patterns × 3 scopes (skip-stubs; activated in Wave 2)
+# Assertion / mutation helpers for the mailbox-path matrix
 # ---------------------------------------------------------------------------
 
-_WAVE2_SKIP = "message send verb not yet available — enable after Wave 2 (10-03-PLAN)"
+_MBOX04_FIELDS = ("msg_id", "from_session", "pattern", "scope", "topic", "body", "sent_at", "ttl")
+
+
+def _override_field(client: redis_module.Redis, session_id: str, field: str, value: str) -> None:
+    """Overwrite one field of a registered session record (for cross-scope tests)."""
+    import em_proj.session._ops as ops
+
+    client.hset(ops.KEY_PREFIX + session_id, field, value)
+
+
+def _send_ok(args: list[str], sender_session_id: str) -> dict:
+    """Run a `message send`/`broadcast` CLI call, assert exit 0, return the data dict."""
+    proc, stdout, stderr = _send_via_cli(args, sender_session_id)
+    assert proc.returncode == 0, (
+        f"`message {' '.join(args)}` exited {proc.returncode}; stderr={stderr!r}; stdout={stdout!r}"
+    )
+    envelope = json.loads(stdout)
+    assert envelope["status"] == "ok", f"expected ok envelope; got {envelope!r}"
+    return envelope["data"]
+
+
+def _assert_mbox04(msg: dict) -> None:
+    """Assert a received message carries all 8 MBOX-04 fields."""
+    for field in _MBOX04_FIELDS:
+        assert field in msg, f"MBOX-04 field {field!r} missing from message: {msg!r}"
+
+
+# ---------------------------------------------------------------------------
+# Mailbox-path cells — 3 patterns × 3 scopes (TEST-04)
+# ---------------------------------------------------------------------------
 
 
 def test_directed_machine_scope(clean_db, redis_precheck) -> None:
-    pytest.skip(_WAVE2_SKIP)
+    """directed × machine: send --to a registered session; it appears in that inbox."""
+    sender = _unique_session_id()
+    recipient = _unique_session_id()
+    _register_session_for_test(recipient, clean_db)
+
+    data = _send_ok(
+        ["send", "--to", recipient, "--scope", "machine", "--json", "hello directed"],
+        sender,
+    )
+    assert data["recipients_written"] == 1
+    assert data["recipients_failed"] == 0
+    assert data["pattern"] == "direct"
+
+    msgs = _inbox_via_cli(recipient)
+    assert len(msgs) == 1
+    _assert_mbox04(msgs[0])
+    assert msgs[0]["pattern"] == "direct"
+    assert msgs[0]["scope"] == "machine"
+    assert msgs[0]["body"] == "hello directed"
 
 
 def test_directed_project_scope(clean_db, redis_precheck) -> None:
-    pytest.skip(_WAVE2_SKIP)
+    """directed × project: scope is informational for directed; recipient still gets it."""
+    sender = _unique_session_id()
+    recipient = _unique_session_id()
+    _register_session_for_test(recipient, clean_db)
+
+    data = _send_ok(
+        ["send", "--to", recipient, "--scope", "project", "--json", "hi proj"],
+        sender,
+    )
+    assert data["recipients_written"] == 1
+    msgs = _inbox_via_cli(recipient)
+    assert len(msgs) == 1
+    assert msgs[0]["scope"] == "project"
+    assert msgs[0]["body"] == "hi proj"
 
 
 def test_directed_upstream_scope(clean_db, redis_precheck) -> None:
-    pytest.skip(_WAVE2_SKIP)
+    """directed × upstream: scope is informational for directed; recipient still gets it."""
+    sender = _unique_session_id()
+    recipient = _unique_session_id()
+    _register_session_for_test(recipient, clean_db)
+
+    data = _send_ok(
+        ["send", "--to", recipient, "--scope", "upstream", "--json", "hi up"],
+        sender,
+    )
+    assert data["recipients_written"] == 1
+    msgs = _inbox_via_cli(recipient)
+    assert len(msgs) == 1
+    assert msgs[0]["scope"] == "upstream"
+    assert msgs[0]["body"] == "hi up"
 
 
 def test_broadcast_machine_scope(clean_db, redis_precheck) -> None:
-    pytest.skip(_WAVE2_SKIP)
+    """broadcast × machine: every live non-sender session receives; sender does not."""
+    sender = _unique_session_id()
+    r1 = _unique_session_id()
+    r2 = _unique_session_id()
+    _register_session_for_test(sender, clean_db)
+    _register_session_for_test(r1, clean_db)
+    _register_session_for_test(r2, clean_db)
+
+    data = _send_ok(["broadcast", "--scope", "machine", "--json", "hello all"], sender)
+    assert data["recipients_written"] == 2
+    assert data["recipients_failed"] == 0
+
+    assert len(_inbox_via_cli(r1)) == 1
+    assert len(_inbox_via_cli(r2)) == 1
+    assert _inbox_via_cli(sender) == [], "sender must not receive its own broadcast"
 
 
 def test_broadcast_project_scope(clean_db, redis_precheck) -> None:
-    pytest.skip(_WAVE2_SKIP)
+    """broadcast × project: only same-project sessions receive; out-of-project excluded."""
+    sender = _unique_session_id()
+    r_in = _unique_session_id()
+    r_out = _unique_session_id()
+    _register_session_for_test(sender, clean_db)
+    _register_session_for_test(r_in, clean_db)
+    _register_session_for_test(r_out, clean_db)
+    _override_field(clean_db, r_out, "project_hash", "different-project-hash")
+
+    data = _send_ok(["broadcast", "--scope", "project", "--json", "hello proj"], sender)
+    assert data["recipients_written"] == 1, "only the in-project non-sender session should receive"
+
+    assert len(_inbox_via_cli(r_in)) == 1
+    assert _inbox_via_cli(r_out) == [], "out-of-project session must not receive"
+    assert _inbox_via_cli(sender) == [], "sender must not receive its own broadcast"
 
 
 def test_broadcast_upstream_scope(clean_db, redis_precheck) -> None:
-    pytest.skip(_WAVE2_SKIP)
+    """broadcast × upstream: only same-upstream sessions receive; out-of-upstream excluded."""
+    sender = _unique_session_id()
+    r_in = _unique_session_id()
+    r_out = _unique_session_id()
+    _register_session_for_test(sender, clean_db)
+    _register_session_for_test(r_in, clean_db)
+    _register_session_for_test(r_out, clean_db)
+    _override_field(clean_db, r_out, "upstream_identity", "different-host:other/repo")
+
+    data = _send_ok(["broadcast", "--scope", "upstream", "--json", "hello upstream"], sender)
+    assert data["recipients_written"] == 1, "only the in-upstream non-sender session should receive"
+
+    assert len(_inbox_via_cli(r_in)) == 1
+    assert _inbox_via_cli(r_out) == [], "out-of-upstream session must not receive"
+    assert _inbox_via_cli(sender) == [], "sender must not receive its own broadcast"
 
 
 def test_topic_machine_scope(clean_db, redis_precheck) -> None:
-    pytest.skip(_WAVE2_SKIP)
+    """topic × machine: a subscriber receives a topic send; non-subscribers do not."""
+    sender = _unique_session_id()
+    subscriber = _unique_session_id()
+    _register_session_for_test(subscriber, clean_db)
+    topic = "test-topic-machine"
+
+    sproc, _sout, serr = _send_via_cli(["subscribe", topic, "--scope", "machine", "--json"], subscriber)
+    assert sproc.returncode == 0, f"subscribe exited {sproc.returncode}; stderr={serr!r}"
+
+    data = _send_ok(["send", "--topic", topic, "--scope", "machine", "--json", "hello topic"], sender)
+    assert data["recipients_written"] == 1
+
+    msgs = _inbox_via_cli(subscriber)
+    assert len(msgs) == 1
+    _assert_mbox04(msgs[0])
+    assert msgs[0]["pattern"] == "topic"
+    assert msgs[0]["topic"] == topic
+    assert msgs[0]["scope"] == "machine"
 
 
 def test_topic_project_scope(clean_db, redis_precheck) -> None:
-    pytest.skip(_WAVE2_SKIP)
+    """topic × project: subscriber in project scope receives a project-scoped topic send."""
+    sender = _unique_session_id()
+    subscriber = _unique_session_id()
+    _register_session_for_test(subscriber, clean_db)
+    topic = "test-topic-project"
+
+    sproc, _sout, serr = _send_via_cli(["subscribe", topic, "--scope", "project", "--json"], subscriber)
+    assert sproc.returncode == 0, f"subscribe exited {sproc.returncode}; stderr={serr!r}"
+
+    data = _send_ok(["send", "--topic", topic, "--scope", "project", "--json", "hello topic proj"], sender)
+    assert data["recipients_written"] == 1
+
+    msgs = _inbox_via_cli(subscriber)
+    assert len(msgs) == 1
+    assert msgs[0]["topic"] == topic
+    assert msgs[0]["scope"] == "project"
 
 
 def test_topic_upstream_scope(clean_db, redis_precheck) -> None:
-    pytest.skip(_WAVE2_SKIP)
+    """topic × upstream: subscriber in upstream scope receives an upstream-scoped topic send."""
+    sender = _unique_session_id()
+    subscriber = _unique_session_id()
+    _register_session_for_test(subscriber, clean_db)
+    topic = "test-topic-upstream"
+
+    sproc, _sout, serr = _send_via_cli(["subscribe", topic, "--scope", "upstream", "--json"], subscriber)
+    assert sproc.returncode == 0, f"subscribe exited {sproc.returncode}; stderr={serr!r}"
+
+    data = _send_ok(["send", "--topic", topic, "--scope", "upstream", "--json", "hello topic up"], sender)
+    assert data["recipients_written"] == 1
+
+    msgs = _inbox_via_cli(subscriber)
+    assert len(msgs) == 1
+    assert msgs[0]["topic"] == topic
+    assert msgs[0]["scope"] == "upstream"
 
 
 # ---------------------------------------------------------------------------
