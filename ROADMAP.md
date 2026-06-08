@@ -28,7 +28,7 @@ Full phase details, success criteria, and milestone summary archived in
 - [x] **Phase 8: Session Registry (Hybrid)** - Live registry of who's running, enriched with held claims/locks/reservations, with stale reaping
 - [ ] **Phase 9: Durable Mailbox Transport** - Per-recipient Redis mailbox that persists messages for offline sessions (owns the Streams-vs-List transport decision)
 - [x] **Phase 10: Messaging Send Patterns** - `message send`/`broadcast`/`subscribe` across directed/broadcast/topic patterns × selectable scope (completed 2026-06-08)
-- [ ] **Phase 11: Listener Daemon** - Per-session pub/sub daemon that drains live messages to the mailbox and heartbeats the registry
+- [x] **Phase 11: Listener Daemon** - Per-session pub/sub daemon that drains live messages to the mailbox and heartbeats the registry (completed 2026-06-08)
 - [ ] **Phase 12: End-to-End CC Integration + Skill Surface** - SessionStart/UserPromptSubmit hooks surface the mailbox into a live session (A→B proven); `/em-sessions` read+send skill surface
 
 ## Phase Details
@@ -108,10 +108,10 @@ Plans:
 **Plans**: 2 plans
 Plans:
 **Wave 1**
-- [ ] 11-01-PLAN.md — _daemon.py body (foreground loop, heartbeat, pub/sub, daemon HASH ops) + session listen verb + structural shape tests + start/heartbeat/liveness multiprocess tests (DAEMON-01, DAEMON-02, DAEMON-03)
+- [x] 11-01-PLAN.md — _daemon.py body (foreground loop, heartbeat, pub/sub, daemon HASH ops) + session listen verb + structural shape tests + start/heartbeat/liveness multiprocess tests (DAEMON-01, DAEMON-02, DAEMON-03)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 11-02-PLAN.md — _daemon_stop function + session stop verb + idempotency/crash-recovery/stop multiprocess tests (DAEMON-04, DAEMON-05, TEST-05)
+- [x] 11-02-PLAN.md — _daemon_stop function + session stop verb + idempotency/crash-recovery/stop multiprocess tests (DAEMON-04, DAEMON-05, TEST-05)
 
 ### Phase 12: End-to-End CC Integration + Skill Surface
 **Goal**: A message sent from one live Claude Code session demonstrably appears in another live session's context, and sub-agents/skills can read the registry and inbox and send messages — proving the milestone end-to-end.
@@ -139,5 +139,5 @@ Plans:
 | 8. Session Registry (Hybrid) | v1.1 | 3/3 | Complete | 2026-06-07 |
 | 9. Durable Mailbox Transport | v1.1 | 3/3 | Complete | 2026-06-07 |
 | 10. Messaging Send Patterns | v1.1 | 3/3 | Complete   | 2026-06-08 |
-| 11. Listener Daemon | v1.1 | 0/2 | Not started | - |
+| 11. Listener Daemon | v1.1 | 2/2 | Complete   | 2026-06-08 |
 | 12. End-to-End CC Integration + Skill Surface | v1.1 | 0/0 | Not started | - |
