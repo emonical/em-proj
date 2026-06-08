@@ -122,7 +122,7 @@ Plans:
 | 6. gsd-sdk Workstream Consumer | v1.0 | 3/3 | Complete | 2026-05-27 |
 | 7. Project-Scoped Reservation Registry | v1.0 | 3/3 | Complete | 2026-06-04 |
 | 8. Session Registry (Hybrid) | v1.1 | 3/3 | Complete | 2026-06-07 |
-| 9. Durable Mailbox Transport | v1.1 | 0/3 | Not started | - |
+| 9. Durable Mailbox Transport | v1.1 | 3/3 | Complete | 2026-06-07 |
 | 10. Messaging Send Patterns | v1.1 | 0/0 | Not started | - |
 | 11. Listener Daemon | v1.1 | 0/0 | Not started | - |
 | 12. End-to-End CC Integration + Skill Surface | v1.1 | 0/0 | Not started | - |
