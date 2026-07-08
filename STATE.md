@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Session Registry + Inter-Session Messaging
 status: executing
-stopped_at: Phase 11 shipped — PR #7 (gsd/phase-11-listener-daemon → main); next `/gsd-plan-phase 12`
+stopped_at: Phase 11 MERGED — PR #7 (main @ 7b9122a); next `/gsd-plan-phase 12`. Carry reserve MAX_TTL fix into Phase 12 (see Pending Todos).
 last_updated: "2026-07-08T00:00:00.000Z"
-last_activity: 2026-07-08 -- Phase 11 shipped (PR #7)
+last_activity: 2026-07-08 -- Phase 11 merged (PR #7)
 progress:
   total_phases: 5
   completed_phases: 4
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-07)
 
 ## Current Position
 
-Phase: 11 (listener-daemon) — SHIPPED (PR #7, awaiting merge)
+Phase: 11 (listener-daemon) — MERGED (PR #7, main @ 7b9122a)
 Plan: 2 of 2 complete
-Status: Phase 11 shipped; ready to plan Phase 12
-Last activity: 2026-07-08 -- Phase 11 shipped (PR #7)
+Status: Phase 11 merged; ready to plan Phase 12
+Last activity: 2026-07-08 -- Phase 11 merged (PR #7)
 
 Progress: 80% — 4/5 v1.1 phases complete
 
@@ -50,7 +50,12 @@ Decisions are logged in PROJECT.md Key Decisions table. Foundational v1.0 choice
 
 ### Pending Todos
 
-None.
+- **Fold reserve MAX_TTL (7-day) fix into Phase 12's PR.** `src/em_proj/state/reserve.py`
+  `MAX_TTL` 86400 → 604800 + `tests/unit/test_reserve.py` bound assertion. Implemented but
+  MISSED the PR #7 squash (merge captured `8cea3ef`, before the cherry-pick). Preserved as
+  commit `7836397` on local branch `carry/reserve-ttl-week` (also on `origin/gsd/phase-11-listener-daemon`
+  until that branch is deleted). When the Phase 12 branch is cut off `main`, `git cherry-pick 7836397`
+  onto it so it ships with Phase 12 — no standalone PR.
 
 ### Blockers/Concerns
 
