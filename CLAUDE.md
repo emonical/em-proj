@@ -105,12 +105,32 @@ would otherwise require — one allowlisted dispatcher call (`bash scripts/
 test.sh all` or `bash scripts/test.sh structural`) covers every structural
 check.
 
-New phases that produce significant code should add a
-`tests/structural/test_<phase>_shape.py` file capturing the plan's named
-structural criteria (file presence, symbol existence, fixture scopes, locked
-design choices like "no `multiprocessing` import"). Use AST checks for code
-properties; reserve source-text grep only for things outside Python (shell
-scripts, markdown).
+New phases that produce significant code should add structural tests
+capturing the plan's named criteria. Use AST checks for code properties;
+reserve source-text grep only for things outside Python (shell scripts,
+markdown).
+
+**Name the file for the invariant it protects, not the phase that produced
+it.** A structural test survives long after "phase 11" means anything to
+anyone — so `test_session_daemon_boundaries.py` (says what goes red and why)
+beats `test_phase_NN_shape.py` (a phase number + the vague umbrella noun
+"shape"). Group tests by the boundary/contract they guard. This is the global
+"avoid vague umbrella nouns — name the concrete thing" rule applied to test
+files. The old `test_<phase>_shape.py` convention is retired.
+
+**Keep only the invariants worth guarding forever.** These files should hold
+*durable architectural boundaries* — locked design choices that aren't
+obvious from the code and would silently regress (e.g. "the ops module never
+imports the CLI framework", "the daemon never writes the mailbox"). Do NOT
+retain point-in-time plan-acceptance gates — "did we create file X",
+"is symbol Y defined", "does every PLAN.md have a SUMMARY.md" — those are
+verification-time checks already covered transitively by behavioral tests
+(the import/collection would fail loudly) or by `scripts/verify-phase.sh`.
+They add line count and false-signal noise without protecting anything.
+(Incident: Phase 11's `test_phase_11_shape.py` shipped 8 tests of which 5
+were existence/import-detail/summary-hygiene checks and one skipped on `main`
+entirely; pruned to the 3 real boundary invariants and renamed
+2026-07-08.)
 
 ## Planning artifacts
 
