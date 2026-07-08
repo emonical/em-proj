@@ -123,7 +123,13 @@ Plans:
   3. End-to-end demonstrated: a message sent from session A (directed/broadcast/topic) appears in session B's live context via the hook path — the v1.1 validating consumer.
   4. Hook integration degrades gracefully when Redis or the daemon is unavailable — session startup never breaks.
   5. `/em-sessions` (or extended `/em-global-state`) lists live sessions + held resources parseably, and can read a session's inbox and send a message as first-class CLI-backed operations consistent with the v1.0 skill-write boundary.
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+**Wave 1**
+- [ ] 12-01-PLAN.md — SessionStart + UserPromptSubmit hook scripts, repo-scoped opt-in wiring, HOOK-04 degradation harness (HOOK-01, HOOK-02, HOOK-04)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 12-02-PLAN.md — HOOK-03 A-to-B end-to-end proof (directed/broadcast/topic) + staged `/em-sessions` skill content, orchestrator-applied (HOOK-03, SKILL-04, SKILL-05)
 
 ## Progress
 
@@ -140,4 +146,4 @@ Plans:
 | 9. Durable Mailbox Transport | v1.1 | 3/3 | Complete | 2026-06-07 |
 | 10. Messaging Send Patterns | v1.1 | 3/3 | Complete   | 2026-06-08 |
 | 11. Listener Daemon | v1.1 | 2/2 | Complete   | 2026-06-08 |
-| 12. End-to-End CC Integration + Skill Surface | v1.1 | 0/0 | Not started | - |
+| 12. End-to-End CC Integration + Skill Surface | v1.1 | 0/2 | Not started | - |
