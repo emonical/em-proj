@@ -87,6 +87,40 @@ def _stop_session_daemon(session_id: str) -> None:
     )
 
 
+def _seed_mailbox_message(
+    client,  # type: ignore[no-untyped-def]
+    recipient_id: str,
+    from_session: str,
+    body: str,
+    pattern: str = "direct",
+    scope: str = "machine",
+    topic: str | None = None,
+) -> None:
+    """Seed a mailbox message directly against the clean_db client (db=15).
+
+    Mirrors mbox_write's exact Redis calls without going through the em_proj
+    Redis singleton (which would target the wrong DB in-process — see
+    12-01-PLAN.md interfaces note on the Redis-DB mismatch).
+    """
+    payload = {
+        "from_session": from_session,
+        "pattern": pattern,
+        "scope": scope,
+        "topic": topic,
+        "body": body,
+        "sent_at": time.time(),
+        "ttl": 3600,
+    }
+    key = f"mbox:{recipient_id}"
+    client.xadd(
+        key,
+        fields={"payload": json.dumps(payload)},
+        maxlen=500,
+        approximate=True,
+    )
+    client.expire(key, 3600)
+
+
 # ---------------------------------------------------------------------------
 # Task 1 — HOOK-01 session_start.py gate on/off
 # ---------------------------------------------------------------------------
@@ -123,3 +157,38 @@ def test_session_start_hook_noop_when_gate_off(clean_db) -> None:  # type: ignor
     assert result.stdout == ""
     assert clean_db.exists(f"state:session:{session_id}") == 0
     assert clean_db.exists(f"daemon:{session_id}") == 0
+
+
+# ---------------------------------------------------------------------------
+# Task 2 — HOOK-02 user_prompt_submit.py surfacing / consume / empty mailbox
+# ---------------------------------------------------------------------------
+
+
+def test_user_prompt_submit_hook_surfaces_seeded_message_and_consumes_it(clean_db) -> None:  # type: ignore[no-untyped-def]
+    recipient_id = _unique_session_id()
+    _seed_mailbox_message(clean_db, recipient_id, "test-sender-A", "hello-hook")
+    result = _run_hook(USER_PROMPT_SUBMIT_HOOK, {"session_id": recipient_id}, gate_on=True)
+    assert result.returncode == 0
+    assert "[em-proj inbox] 1 new message(s):" in result.stdout
+    assert "hello-hook" in result.stdout
+    assert "test-sender-A" in result.stdout
+
+    result2 = _run_hook(USER_PROMPT_SUBMIT_HOOK, {"session_id": recipient_id}, gate_on=True)
+    assert result2.stdout == ""
+
+
+def test_user_prompt_submit_hook_noop_on_empty_mailbox(clean_db) -> None:  # type: ignore[no-untyped-def]
+    recipient_id = _unique_session_id()
+    result = _run_hook(USER_PROMPT_SUBMIT_HOOK, {"session_id": recipient_id}, gate_on=True)
+    assert result.returncode == 0
+    assert result.stdout == ""
+
+
+def test_user_prompt_submit_hook_noop_when_gate_off(clean_db) -> None:  # type: ignore[no-untyped-def]
+    recipient_id = _unique_session_id()
+    _seed_mailbox_message(clean_db, recipient_id, "test-sender-B", "should-not-surface")
+    result = _run_hook(USER_PROMPT_SUBMIT_HOOK, {"session_id": recipient_id}, gate_on=False)
+    assert result.returncode == 0
+    assert result.stdout == ""
+    entries = clean_db.xrange(f"mbox:{recipient_id}", min="-", max="+")
+    assert len(entries) == 1
