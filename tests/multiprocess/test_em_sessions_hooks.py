@@ -192,3 +192,41 @@ def test_user_prompt_submit_hook_noop_when_gate_off(clean_db) -> None:  # type: 
     assert result.stdout == ""
     entries = clean_db.xrange(f"mbox:{recipient_id}", min="-", max="+")
     assert len(entries) == 1
+
+
+# ---------------------------------------------------------------------------
+# Task 3 — HOOK-04 graceful degradation (em-proj absent / em-proj fails)
+# ---------------------------------------------------------------------------
+
+
+def test_hooks_degrade_gracefully_when_em_proj_absent(clean_db) -> None:  # type: ignore[no-untyped-def]
+    restricted_path = os.path.dirname(sys.executable)
+    for hook_path in (SESSION_START_HOOK, USER_PROMPT_SUBMIT_HOOK):
+        session_id = _unique_session_id()
+        result = _run_hook(
+            hook_path,
+            {"session_id": session_id},
+            gate_on=True,
+            env_overrides={"PATH": restricted_path},
+        )
+        assert result.returncode == 0
+        assert result.stdout == ""
+        assert result.stderr == ""
+
+
+def test_hooks_degrade_gracefully_when_em_proj_fails(clean_db, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    fake_em_proj = tmp_path / "em-proj"
+    fake_em_proj.write_text("#!/usr/bin/env bash\nexit 1\n")
+    os.chmod(fake_em_proj, 0o755)
+    restricted_path = f"{tmp_path}:{os.path.dirname(sys.executable)}"
+    for hook_path in (SESSION_START_HOOK, USER_PROMPT_SUBMIT_HOOK):
+        session_id = _unique_session_id()
+        result = _run_hook(
+            hook_path,
+            {"session_id": session_id},
+            gate_on=True,
+            env_overrides={"PATH": restricted_path},
+        )
+        assert result.returncode == 0
+        assert result.stdout == ""
+        assert result.stderr == ""
