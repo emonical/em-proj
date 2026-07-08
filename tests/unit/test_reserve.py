@@ -65,9 +65,9 @@ def test_key_prefix_is_state_reserve() -> None:
 
 
 def test_ttl_bounds() -> None:
-    """MIN_TTL == 60, MAX_TTL == 86400 (reservation bounds per PLAN)."""
+    """MIN_TTL == 60, MAX_TTL == 604800 (reservations may last up to 7 days)."""
     assert MIN_TTL == 60
-    assert MAX_TTL == 86400
+    assert MAX_TTL == 604800
 
 
 # ---------------------------------------------------------------------------

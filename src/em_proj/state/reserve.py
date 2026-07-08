@@ -81,8 +81,10 @@ TTL_DEFAULT: int = 1800
 #: Minimum allowed TTL in seconds.
 MIN_TTL: int = 60
 
-#: Maximum allowed TTL in seconds (24 hours). T-4-01-05 carry: caps EXPIRE argument.
-MAX_TTL: int = 86400
+#: Maximum allowed TTL in seconds (7 days). T-4-01-05 carry: caps EXPIRE argument.
+#: Reservations may be long-lived (e.g. cross-clone migration-version holds), so the
+#: ceiling is a full week — wider than the claim/lock caps by design.
+MAX_TTL: int = 604800
 
 #: Reason field max character length (mirror claim.py MAX_REASON_CHARS).
 MAX_REASON_CHARS: int = 256
