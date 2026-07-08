@@ -25,5 +25,17 @@
       "Skill(gsd-execute-phase)",
       "Skill(gsd-code-review)"
     ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 $CLAUDE_PROJECT_DIR/scripts/hooks/session_start.py"
+          }
+        ]
+      }
+    ]
   }
 }
