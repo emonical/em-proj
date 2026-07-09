@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 em-proj state primitive** — Phases 1-7 (shipped 2026-06-07) → see [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
-- 🚧 **v1.1 Session Registry + Inter-Session Messaging** — Phases 8-12 (in progress) → see `## Phase Details` below
+- 🚧 **v1.1 Session Registry + Inter-Session Messaging** — Phases 8-12 (all executed 2026-07-08; Phase 12 PR open vs main → ships on merge) → see `## Phase Details` below
 
 ## Phases
 
@@ -26,10 +26,10 @@ Full phase details, success criteria, and milestone summary archived in
 ### v1.1 Session Registry + Inter-Session Messaging (Phases 8-12)
 
 - [x] **Phase 8: Session Registry (Hybrid)** - Live registry of who's running, enriched with held claims/locks/reservations, with stale reaping
-- [ ] **Phase 9: Durable Mailbox Transport** - Per-recipient Redis mailbox that persists messages for offline sessions (owns the Streams-vs-List transport decision)
+- [x] **Phase 9: Durable Mailbox Transport** - Per-recipient Redis mailbox that persists messages for offline sessions (owns the Streams-vs-List transport decision)
 - [x] **Phase 10: Messaging Send Patterns** - `message send`/`broadcast`/`subscribe` across directed/broadcast/topic patterns × selectable scope (completed 2026-06-08)
 - [x] **Phase 11: Listener Daemon** - Per-session pub/sub daemon that drains live messages to the mailbox and heartbeats the registry (completed 2026-06-08)
-- [ ] **Phase 12: End-to-End CC Integration + Skill Surface** - SessionStart/UserPromptSubmit hooks surface the mailbox into a live session (A→B proven); `/em-sessions` read+send skill surface
+- [x] **Phase 12: End-to-End CC Integration + Skill Surface** - SessionStart/UserPromptSubmit hooks surface the mailbox into a live session (A→B proven); `/em-sessions` read+send skill surface
 
 ## Phase Details
 
@@ -126,10 +126,10 @@ Plans:
 **Plans**: 2 plans
 Plans:
 **Wave 1**
-- [ ] 12-01-PLAN.md — SessionStart + UserPromptSubmit hook scripts, repo-scoped opt-in wiring, HOOK-04 degradation harness (HOOK-01, HOOK-02, HOOK-04)
+- [x] 12-01-PLAN.md — SessionStart + UserPromptSubmit hook scripts, repo-scoped opt-in wiring, HOOK-04 degradation harness (HOOK-01, HOOK-02, HOOK-04)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 12-02-PLAN.md — HOOK-03 A-to-B end-to-end proof (directed/broadcast/topic) + staged `/em-sessions` skill content, orchestrator-applied (HOOK-03, SKILL-04, SKILL-05)
+- [x] 12-02-PLAN.md — HOOK-03 A-to-B end-to-end proof (directed/broadcast/topic) + staged `/em-sessions` skill content, orchestrator-applied (HOOK-03, SKILL-04, SKILL-05)
 
 ## Progress
 
@@ -146,4 +146,4 @@ Plans:
 | 9. Durable Mailbox Transport | v1.1 | 3/3 | Complete | 2026-06-07 |
 | 10. Messaging Send Patterns | v1.1 | 3/3 | Complete   | 2026-06-08 |
 | 11. Listener Daemon | v1.1 | 2/2 | Complete   | 2026-06-08 |
-| 12. End-to-End CC Integration + Skill Surface | v1.1 | 0/2 | Not started | - |
+| 12. End-to-End CC Integration + Skill Surface | v1.1 | 2/2 | Complete | 2026-07-08 |
