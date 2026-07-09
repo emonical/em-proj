@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Session Registry + Inter-Session Messaging
 status: executing
-stopped_at: Phase 12 EXECUTED (branch gsd/phase-12-end-to-end-cc-integration-skill-surface, 6 commits incl. reserve MAX_TTL carry 94c45e5). PR open vs main — on merge, v1.1 (Phases 8–12) is fully shipped; then run /gsd-complete-milestone.
+stopped_at: Phase 12 EXECUTED (branch gsd/phase-12-end-to-end-cc-integration-skill-surface, 6 commits incl. reserve MAX_TTL carry 94c45e5). PR #8 open vs main — on merge, v1.1 (Phases 8–12) is fully shipped; then run /gsd-complete-milestone.
 last_updated: "2026-07-08T23:59:00.000Z"
 last_activity: 2026-07-08 -- Phase 12 executed (SessionStart/UserPromptSubmit hooks + A→B E2E proof + /em-sessions skill); PR open
 progress:
@@ -21,11 +21,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-07)
 
 **Core value:** A sub-agent, skill, or session can ask the substrate "is it safe to edit X, or is someone else working there?" and get a structured, parseable answer grounded in current cross-session reality.
-**Current focus:** v1.1 milestone work COMPLETE — Phase 12 executed; PR open vs main. On merge, run /gsd-complete-milestone.
+**Current focus:** v1.1 milestone work COMPLETE — Phase 12 executed; PR #8 open vs main. On merge, run /gsd-complete-milestone.
 
 ## Current Position
 
-Phase: 12 (end-to-end-cc-integration-skill-surface) — EXECUTED (branch gsd/phase-12-..., PR open vs main)
+Phase: 12 (end-to-end-cc-integration-skill-surface) — EXECUTED (branch gsd/phase-12-..., PR #8 open vs main)
 Plan: 2 of 2 complete
 Status: Phase 12 delivered (all 6 requirements HOOK-01/02/03/04 + SKILL-04/05 test-backed; /em-sessions skill installed); PR awaiting review/merge
 Last activity: 2026-07-08 -- Phase 12 executed; PR open
@@ -78,5 +78,5 @@ Carried forward to future milestones (see PROJECT.md › Requirements › Active
 ## Session Continuity
 
 Last session: 2026-07-08
-Stopped at: Phase 12 executed (branch gsd/phase-12-end-to-end-cc-integration-skill-surface, off origin/main; 6 commits incl. reserve carry). PR open vs main; on merge run /gsd-complete-milestone to archive v1.1.
+Stopped at: Phase 12 executed (branch gsd/phase-12-end-to-end-cc-integration-skill-surface, off origin/main; 6 commits incl. reserve carry). PR #8 open vs main; on merge run /gsd-complete-milestone to archive v1.1.
 Resume file: .planning/ROADMAP.md
