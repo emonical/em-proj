@@ -74,15 +74,15 @@ copy can then become a thin pointer or be removed entirely. Memory:
 
 ### `scripts/verify-phase.sh` — phase verification dispatcher
 
-`scripts/verify-phase.sh <phase-id>` runs the deterministic checks a GSD
-phase verifier would otherwise have to run as separate Bash invocations:
+`scripts/verify-phase.sh <phase-id>` runs the deterministic checks a
+phase-verification pass would otherwise have to run as separate Bash invocations:
 test suite (`test.sh all` + `test.sh structural`), Redis backend check,
 `em-proj` on PATH + `--version`, anti-pattern grep (TBD/FIXME/XXX/HACK/TODO/
 PLACEHOLDER) on `src/ tests/ scripts/`, SUMMARY.md presence for every
 PLAN.md in the phase directory, recent commit traceability. Emits a
 structured markdown report to stdout.
 
-A `gsd-verifier` subagent spawn should now reduce to: "run
+A verifier-agent spawn should now reduce to: "run
 `bash scripts/verify-phase.sh <id>`, read the output, apply judgment about
 whether the phase goal is *delivered* (not just that checks pass), write
 VERIFICATION.md with next-phase recommendations." One allowlisted call
@@ -92,8 +92,8 @@ Exit codes: 0 = all pass, 1 = one or more checks fail (report shows which),
 2 = bad input. Run `bash scripts/verify-phase.sh help` for the full surface.
 
 **TODO (future): globalize alongside git-ro.sh.** Phase-verification is a
-project-agnostic concept for GSD. After validating the pattern reduces
-friction in Phase 2's verifier spawn, lift to `~/.claude/scripts/verify-phase.sh`.
+project-agnostic concept. After validating the pattern reduces
+friction in a real verifier spawn, lift to `~/.claude/scripts/verify-phase.sh`.
 Memory: `feedback-verify-phase-validate`.
 
 ## Structural tests (`tests/structural/`)
@@ -134,10 +134,10 @@ entirely; pruned to the 3 real boundary invariants and renamed
 
 ## Planning artifacts
 
-`.planning/` is a worktree attached to the `planning` branch (orphan).
-The `main` branch does NOT track `.planning/`. Do not attempt to commit
-anything under `.planning/` from the main checkout — work from inside
-`.planning/` if you need to commit planning artifacts. See the global
+`.planning/` is a worktree attached to the orphan `planning` branch and is a
+**read-only archive** of the pre-tracker planning docs (GSD was removed
+2026-07-28). The `main` branch does NOT track `.planning/`; do not commit new
+planning artifacts — new work is tracked as GitHub issues. See the global
 "Planning artifact storage" rule.
 
 ## Commit conventions
