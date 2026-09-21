@@ -15,8 +15,8 @@ shape::
     {"schema_version": "1", "status": "<ok|not_found|error>", "data": ..., "error": {...}}
 
 `data` is present on success; `error` is present on non-success. A common
-envelope means one parser (the Phase 5 `/global-state` skill, the Phase 6
-`gsd-sdk` consumer) handles every verb across every subcommand family forever.
+envelope means one parser (the Phase 5 `/global-state` skill, or any other
+consumer) handles every verb across every subcommand family forever.
 
 schema_version bump policy (D-02)
 ---------------------------------

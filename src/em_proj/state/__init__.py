@@ -150,8 +150,8 @@ def _resolve_workstream(workstream_arg: str | None, json_mode: bool) -> str:
     Resolution order (locked by Q-H finding from 07-01-SUMMARY):
       1. --workstream <name>: use after validate_key sanitization.
       2. workstream_check("workstream.active") — Phase 6 presence-check.
-         Q-H FINDING: Phase 6 (gsd-sdk patched workstream.js lines 220-229)
-         claims workstream.active WITHOUT passing --reason, so the holder's
+         Q-H FINDING: the Phase 6 external consumer (since removed)
+         claimed workstream.active WITHOUT passing --reason, so the holder's
          reason field is ALWAYS None even when Phase 6 has set a workstream.
          Presence-check (workstream_check succeeds vs raises ClaimNotHeld)
          tells us "a workstream is set" but NOT what its name is. We fall
@@ -236,8 +236,7 @@ def _resolve_workstream(workstream_arg: str | None, json_mode: bool) -> str:
     emit_error(
         "workstream_unresolved",
         "workstream unresolved — set it via "
-        "`gsd-sdk query workstream.set <name>` "
-        "or pass `--workstream <name>`",
+        "`--workstream <name>`",
         json_mode=json_mode,
     )
     # emit_error always calls SystemExit; satisfy type-checkers:

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # em-proj phase verification dispatcher.
 #
-# Encodes the deterministic checks a GSD phase verifier would otherwise
+# Encodes the deterministic checks a phase verifier would otherwise
 # have to run as separate allowlisted Bash invocations. Emits a structured
 # markdown report to stdout; the subagent reads the report and applies
 # judgment to write VERIFICATION.md prose.

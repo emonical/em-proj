@@ -2,7 +2,7 @@
 
 `docs/em-sessions-skill.md` is the in-repo staging artifact for
 `~/.claude/skills/em-sessions/SKILL.md` (orchestrator-applied — the
-gsd-executor permission scope denies writes under `~/.claude/skills/`, so
+executing agent's permission scope denies writes under `~/.claude/skills/`, so
 this repo can never verify the deployed copy directly; it verifies the
 staged content instead).
 
