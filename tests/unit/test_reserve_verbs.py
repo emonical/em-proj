@@ -207,8 +207,8 @@ def test_reserve_nontty_exits_1_when_workstream_unset(clean_db, monkeypatch):
 def test_reserve_phase_6_claim_set_but_name_unknown_still_prompts(clean_db, monkeypatch):
     """Q-H validation: even with workstream.active CLAIMED, the verb prompts.
 
-    Phase 6 (gsd-sdk patched workstream.js) claims 'workstream.active' WITHOUT
-    passing --reason, so the holder's reason field is ALWAYS None. The verb cannot
+    The Phase 6 external consumer (since removed) claimed 'workstream.active'
+    WITHOUT passing --reason, so the holder's reason field is ALWAYS None. The verb cannot
     extract the workstream name from the claim holder — it MUST fall through to
     the TTY prompt path. This test pins that behavior.
 
